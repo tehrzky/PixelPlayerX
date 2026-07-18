@@ -233,6 +233,7 @@ class MusicService : MediaLibraryService() {
     private var headsetReconnectCallback: AudioDeviceCallback? = null
     private var shouldResumeAfterHeadsetReconnect = false
     private var lastNoisyPauseRealtimeMs = 0L
+    private var vinylRotationDegrees = 0f
     private var resumeOnHeadsetReconnectEnabled = false
     private var pauseOnVolumeZeroEnabled = false
     private var temporaryForegroundStartedInOnCreate = false
@@ -452,6 +453,18 @@ class MusicService : MediaLibraryService() {
             }
         }
         registerHeadsetReconnectMonitor()
+
+        serviceScope.launch {
+            while (true) {
+                if (engine.masterPlayer.isPlaying) {
+                    vinylRotationDegrees = (vinylRotationDegrees + 5f) % 360f
+                    widgetUpdateManager.requestFullUpdate(force = true)
+                    delay(100)
+                } else {
+                    delay(1000)
+                }
+            }
+        }
 
         serviceScope.launch {
             musicRepository.telegramRepository.downloadCompleted.collect {
@@ -1259,6 +1272,8 @@ class MusicService : MediaLibraryService() {
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            vinylRotationDegrees = (vinylRotationDegrees + 30f) % 360f
+            widgetUpdateManager.requestFullUpdate(force = true)
             val player = mediaSession?.player ?: engine.masterPlayer
             Timber.tag(TAG).d("onIsPlayingChanged: $isPlaying. Duration: ${player.duration}, Seekable: ${player.isCurrentMediaItemSeekable}")
             // Surface playback state to background workers so they can defer
@@ -2122,6 +2137,7 @@ class MusicService : MediaLibraryService() {
             repeatMode = repeatMode,
             wearThemePalette = wearThemePalette,
             wearQueueRevision = wearQueueRevision,
+            rotationDegrees = vinylRotationDegrees,
         )
     }
 
