@@ -1594,6 +1594,7 @@ private fun SongMetadataDisplaySection(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Vinyl Player Button (Left part of the segment)
                 Box(
                     modifier = Modifier
                         .size(height = 42.dp, width = 50.dp)
@@ -1606,6 +1607,22 @@ private fun SongMetadataDisplaySection(
                             )
                         )
                         .background(chipColor)
+                        .clickable { playerViewModel.toggleVinylPlayer() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.rounded_album_24),
+                        contentDescription = "Vinyl Player",
+                        tint = chipContentColor
+                    )
+                }
+
+                // Lyrics Button (Middle part of the segment)
+                Box(
+                    modifier = Modifier
+                        .size(height = 42.dp, width = 50.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(chipColor)
                         .clickable { onClickLyrics() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -1615,6 +1632,8 @@ private fun SongMetadataDisplaySection(
                         tint = chipContentColor
                     )
                 }
+
+                // Queue Button (Right part of the segment)
                 Box(
                     modifier = Modifier
                         .size(height = 42.dp, width = 50.dp)
