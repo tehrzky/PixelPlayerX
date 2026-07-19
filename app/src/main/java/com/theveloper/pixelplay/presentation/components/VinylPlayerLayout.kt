@@ -62,7 +62,6 @@ fun VinylPlayerLayout(
             coil.compose.AsyncImage(
                 model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
                     .data(vinylAsset)
-                    .crossfade(400)
                     .build(),
                 contentDescription = null,
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
