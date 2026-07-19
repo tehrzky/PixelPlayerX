@@ -794,16 +794,10 @@ fun FullPlayerContent(
                             }
                             val castCornersExpanded = 50.dp
                             val castCornersCompact = 6.dp
-                            val castTopStart = castCornersExpanded
-                            val castTopEnd by animateDpAsState(
-                                targetValue = if (showCastLabel) castCornersExpanded else castCornersCompact,
-                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
-                            )
-                            val castBottomStart = castCornersExpanded
-                            val castBottomEnd by animateDpAsState(
-                                targetValue = if (showCastLabel) castCornersExpanded else castCornersCompact,
-                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
-                            )
+                            val castTopStart = castCornersCompact
+                            val castTopEnd = castCornersCompact
+                            val castBottomStart = castCornersCompact
+                            val castBottomEnd = castCornersCompact
                             val castContainerColor = playerOnAccentColor.copy(alpha = 0.7f)
                             Box(
                                 modifier = Modifier
