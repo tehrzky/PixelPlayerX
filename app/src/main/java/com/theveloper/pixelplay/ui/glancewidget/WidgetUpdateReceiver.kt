@@ -41,11 +41,6 @@ class WidgetUpdateReceiver : BroadcastReceiver() {
                 gridGlanceIds.forEach { glanceId ->
                     GridWidget2x2().update(context, glanceId)
                 }
-
-                val vinylGlanceIds = glanceAppWidgetManager.getGlanceIds(VinylWidget::class.java)
-                vinylGlanceIds.forEach { glanceId ->
-                    VinylWidget().update(context, glanceId)
-                }
             } catch (e: Exception) {
                 Timber.tag("WidgetUpdateReceiver").e(e, "Error updating widgets")
             } finally {

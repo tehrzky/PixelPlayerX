@@ -9,7 +9,6 @@ import com.theveloper.pixelplay.data.service.wear.WearStatePublisher
 import com.theveloper.pixelplay.ui.glancewidget.BarWidget4x1
 import com.theveloper.pixelplay.ui.glancewidget.ControlWidget4x2
 import com.theveloper.pixelplay.ui.glancewidget.GridWidget2x2
-import com.theveloper.pixelplay.ui.glancewidget.VinylWidget
 import com.theveloper.pixelplay.ui.glancewidget.PixelPlayGlanceWidget
 import com.theveloper.pixelplay.ui.glancewidget.PlayerInfoStateDefinition
 import kotlinx.coroutines.CoroutineScope
@@ -171,14 +170,8 @@ internal class WidgetUpdateManager(
                 GridWidget2x2().update(context, id)
             }
 
-            val vinylGlanceIds = glanceManager.getGlanceIds(VinylWidget::class.java)
-            vinylGlanceIds.forEach { id ->
-                updateAppWidgetState(context, PlayerInfoStateDefinition, id) { widgetPlayerInfo }
-                VinylWidget().update(context, id)
-            }
-
             val anyWidgets = glanceIds.isNotEmpty() || barGlanceIds.isNotEmpty() ||
-                controlGlanceIds.isNotEmpty() || gridGlanceIds.isNotEmpty() || vinylGlanceIds.isNotEmpty()
+                controlGlanceIds.isNotEmpty() || gridGlanceIds.isNotEmpty()
             PerformanceMetrics.setWidgetActive(anyWidgets)
             if (anyWidgets) {
                 PerformanceMetrics.recordTiming(
