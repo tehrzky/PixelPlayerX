@@ -423,8 +423,8 @@ class DailyMixManager @Inject constructor(
             return allSongs.shuffled(random).take(limit.coerceAtMost(allSongs.size))
         }
 
-        val favoriteSectionSize = (limit * 0.3).toInt().coerceAtLeast(5).coerceAtMost(limit)
-        val coreSectionSize = (limit * 0.45).toInt().coerceAtLeast(10).coerceAtMost(limit)
+        val favoriteSectionSize = (limit * (favoriteWeightPercent / 100.0)).toInt().coerceAtLeast(0).coerceAtMost(limit)
+        val coreSectionSize = (limit * (coreWeightPercent / 100.0)).toInt().coerceAtLeast(0).coerceAtMost(limit - favoriteSectionSize)
         val discoverySectionSize = (limit - favoriteSectionSize - coreSectionSize).coerceAtLeast(0)
 
         val diversityState = DiversityState()
