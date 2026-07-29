@@ -70,9 +70,11 @@ class ReplayGainManager @Inject constructor() {
         if (filePath.isBlank()) return null
 
         // Return cached value if available — avoids expensive JNI tag read on repeat/resume
-        synchronized(cache) { cache[filePath] }?.let {
-            Timber.tag(TAG).d("Cache hit for ${File(filePath).name}")
-            return it
+        synchronized(cache) {
+            if (cache.containsKey(filePath)) {
+                Timber.tag(TAG).d("Cache hit for ${File(filePath).name}")
+                return cache[filePath]
+            }
         }
 
         val file = File(filePath)
@@ -143,7 +145,14 @@ class ReplayGainManager @Inject constructor() {
     private fun extractGainValue(propertyMap: Map<String, Array<String>>, keys: List<String>): Float? {
         for (key in keys) {
             val rawValue = propertyMap[key]?.firstOrNull() ?: continue
-            return parseGainString(rawValue)
+            val parsed = parseGainString(rawValue) ?: continue
+            return if (key.startsWith("R128_")) {
+                // R128 gain tags are a Q7.8 fixed-point integer (value / 256 = dB),
+                // not a plain dB float like REPLAYGAIN_* tags — dividing fixes the units.
+                parsed / 256f
+            } else {
+                parsed
+            }
         }
         return null
     }
