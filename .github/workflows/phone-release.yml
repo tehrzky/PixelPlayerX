@@ -69,7 +69,8 @@ jobs:
         with:
           name: PixelPlay-phone-release-split-apks
           path: |
-            app/build/outputs/apk/release/app-arm64-v8a-release.apk
+            app/build/outputs/apk/release/app-arm64-v8a-release.apk \
+            app/build/outputs/apk/release/app-armeabi-v7a-release.apk
           if-no-files-found: error
           compression-level: 0
 
