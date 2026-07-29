@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-phone:
@@ -58,7 +58,8 @@ jobs:
         run: |
           BUILD_TOOLS_VERSION="$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
           for apk in \
-            app/build/outputs/apk/release/app-arm64-v8a-release.apk
+            app/build/outputs/apk/release/app-arm64-v8a-release.apk \
+            app/build/outputs/apk/release/app-armeabi-v7a-release.apk
           do
             "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aapt2" dump badging "$apk" >/dev/null
             "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --verbose "$apk"
@@ -69,15 +70,7 @@ jobs:
         with:
           name: PixelPlay-phone-release-split-apks
           path: |
-            app/build/outputs/apk/release/app-arm64-v8a-release.apk \
+            app/build/outputs/apk/release/app-arm64-v8a-release.apk
             app/build/outputs/apk/release/app-armeabi-v7a-release.apk
           if-no-files-found: error
           compression-level: 0
-
-      - name: Publish direct-download release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest-release
-          name: "Latest build"
-          prerelease: true
-          files: app/build/outputs/apk/release/app-arm64-v8a-release.apk
