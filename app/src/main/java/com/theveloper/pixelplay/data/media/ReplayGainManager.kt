@@ -34,11 +34,18 @@ class ReplayGainManager @Inject constructor() {
     /** Emits a file path whenever its cached ReplayGain data is invalidated (e.g. after an edit). */
     val invalidationEvents: SharedFlow<String> = _invalidationEvents.asSharedFlow()
 
-    /** Clears the cached ReplayGain result for [filePath] so the next read picks up fresh tags. */
-    fun invalidate(filePath: String) {
-        if (filePath.isBlank()) return
-        synchronized(cache) { cache.remove(filePath) }
-        _invalidationEvents.tryEmit(filePath)
+    /**
+     * Clears the cached ReplayGain result for [filePath] so the next read picks up fresh tags,
+     * and — if [mediaId] is given — notifies listeners that this exact track (matched by media
+     * session mediaId, not file path) should be recomputed live if it's currently playing.
+     */
+    fun invalidate(filePath: String, mediaId: String? = null) {
+        if (filePath.isNotBlank()) {
+            synchronized(cache) { cache.remove(filePath) }
+        }
+        if (!mediaId.isNullOrBlank()) {
+            _invalidationEvents.tryEmit(mediaId)
+        }
     }
 
     companion object {
