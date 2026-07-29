@@ -1320,6 +1320,7 @@ private fun Tag.removeReplayGainField(key: String) {
 }
 
 private fun AbstractID3v2Tag.upsertReplayGainId3Field(key: String, value: String) {
+    removeReplayGainId3Field(key)
     val frame = if (this is ID3v23Tag) {
         ID3v23Frame(ID3v23Frames.FRAME_ID_V3_USER_DEFINED_INFO)
     } else {
