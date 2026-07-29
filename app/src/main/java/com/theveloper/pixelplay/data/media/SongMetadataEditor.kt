@@ -87,7 +87,8 @@ class SongMetadataEditor(
     private val context: Context,
     private val musicDao: MusicDao,
     private val telegramDao: TelegramDao, // Added
-    private val userPreferencesRepository: UserPreferencesRepository
+    private val userPreferencesRepository: UserPreferencesRepository,
+    private val replayGainManager: ReplayGainManager
 ) {
 
     /**
@@ -541,6 +542,7 @@ class SongMetadataEditor(
 
             if (finalFilePath.isNotBlank()) {
                 forceMediaRescan(finalFilePath)
+                replayGainManager.invalidate(finalFilePath)
             }
 
             Timber.tag(TAG).e("METADATA_EDIT: Successfully updated metadata for songId: $songId")
