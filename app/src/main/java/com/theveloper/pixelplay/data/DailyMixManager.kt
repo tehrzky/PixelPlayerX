@@ -408,7 +408,9 @@ class DailyMixManager @Inject constructor(
     suspend fun generateYourMix(
         allSongs: List<Song>,
         favoriteSongIds: Set<String> = emptySet(),
-        limit: Int = 60
+        limit: Int = 60,
+        favoriteWeightPercent: Int = 30,
+        coreWeightPercent: Int = 45
     ): List<Song> {
         if (allSongs.isEmpty()) {
             return emptyList()
