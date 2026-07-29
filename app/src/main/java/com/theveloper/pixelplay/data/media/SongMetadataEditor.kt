@@ -542,7 +542,7 @@ class SongMetadataEditor(
 
             if (finalFilePath.isNotBlank()) {
                 forceMediaRescan(finalFilePath)
-                replayGainManager.invalidate(finalFilePath)
+                replayGainManager.invalidate(finalFilePath, mediaId = songId.toString())
             }
 
             Timber.tag(TAG).e("METADATA_EDIT: Successfully updated metadata for songId: $songId")
