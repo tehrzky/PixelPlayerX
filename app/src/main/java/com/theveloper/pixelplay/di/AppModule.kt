@@ -416,10 +416,9 @@ object AppModule {
         @ApplicationContext context: Context,
         musicDao: MusicDao,
         telegramDao: com.theveloper.pixelplay.data.database.TelegramDao,
-        userPreferencesRepository: UserPreferencesRepository,
-        replayGainManager: com.theveloper.pixelplay.data.media.ReplayGainManager
+        userPreferencesRepository: UserPreferencesRepository
     ): SongMetadataEditor {
-        return SongMetadataEditor(context, musicDao, telegramDao, userPreferencesRepository, replayGainManager)
+        return SongMetadataEditor(context, musicDao, telegramDao, userPreferencesRepository)
     }
 
     /**
