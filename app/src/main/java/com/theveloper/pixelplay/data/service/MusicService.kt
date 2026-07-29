@@ -543,19 +543,7 @@ class MusicService : MediaLibraryService() {
                 replayGainProcessor.apply(mediaSession?.player?.currentMediaItem)
             }
         }
-        // Live-refresh ReplayGain if the currently playing song's tags were just edited,
-        // instead of waiting for a track change or app restart to pick up the new value.
-        // Matched by mediaId (same identifier ReplayGainProcessor already uses internally),
-        // not file path, since that's the reliable identifier for "is this the same track".
-        serviceScope.launch {
-            replayGainManager.invalidationEvents.collect { editedMediaId ->
-                val currentItem = mediaSession?.player?.currentMediaItem
-                if (currentItem?.mediaId == editedMediaId) {
-                    replayGainProcessor.apply(currentItem)
-                }
-            }
-        }
-
+        
         // Initialize shuffle state from preferences
         serviceScope.launch {
             val persistent = userPreferencesRepository.persistentShuffleEnabledFlow.first()
