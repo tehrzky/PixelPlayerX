@@ -7,6 +7,9 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.pow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 /**
  * Reads ReplayGain metadata from audio files and computes volume multipliers.
@@ -25,6 +28,17 @@ class ReplayGainManager @Inject constructor() {
     // Avoids re-reading tags on repeat, resume, or rapid track changes.
     private val cache = object : LinkedHashMap<String, ReplayGainValues?>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: Map.Entry<String, ReplayGainValues?>) = size > 200
+    }
+    
+    private val _invalidationEvents = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    /** Emits a file path whenever its cached ReplayGain data is invalidated (e.g. after an edit). */
+    val invalidationEvents: SharedFlow<String> = _invalidationEvents.asSharedFlow()
+
+    /** Clears the cached ReplayGain result for [filePath] so the next read picks up fresh tags. */
+    fun invalidate(filePath: String) {
+        if (filePath.isBlank()) return
+        synchronized(cache) { cache.remove(filePath) }
+        _invalidationEvents.tryEmit(filePath)
     }
 
     companion object {
