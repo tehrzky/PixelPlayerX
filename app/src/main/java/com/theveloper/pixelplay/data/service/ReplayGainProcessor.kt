@@ -13,6 +13,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import timber.log.Timber
 import kotlin.math.abs
+import android.os.SystemClock
+import kotlinx.coroutines.delay
 
 /**
  * Owns all ReplayGain volume-normalization state and logic, extracted from
@@ -94,6 +96,24 @@ class ReplayGainProcessor(
         val clampedVolume = volume.coerceIn(0f, 1f)
         expectedVolume = clampedVolume
         player.volume = clampedVolume
+    }
+
+    private suspend fun rampPlayerVolume(player: Player, targetVolume: Float, durationMs: Long = 400L) {
+        val clampedTarget = targetVolume.coerceIn(0f, 1f)
+        val startVolume = player.volume
+        if (abs(clampedTarget - startVolume) < 0.01f) {
+            setPlayerVolume(player, clampedTarget)
+            return
+        }
+        val stepMs = 32L
+        val startedAtMs = SystemClock.elapsedRealtime()
+        while (true) {
+            val elapsed = (SystemClock.elapsedRealtime() - startedAtMs).coerceAtMost(durationMs)
+            val progress = elapsed.toFloat() / durationMs
+            setPlayerVolume(player, startVolume + (clampedTarget - startVolume) * progress)
+            if (elapsed >= durationMs) break
+            delay(stepMs)
+        }
     }
 
     /**
@@ -207,7 +227,7 @@ class ReplayGainProcessor(
                     engine.incomingTrackReplayGainVolume = null
                     lastAppliedVolume = volume
                     lastMediaId = mediaId
-                    setPlayerVolume(engine.masterPlayer, volume)
+                    rampPlayerVolume(engine.masterPlayer, volume)
                     Timber.tag(TAG).d("ReplayGain: Applied volume=%.2f for %s",
                         volume, mediaItem.mediaMetadata.title
                     )
