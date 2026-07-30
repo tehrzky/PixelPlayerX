@@ -285,10 +285,13 @@ class ReplayGainProcessor(
      */
     fun onMediaMetadataChanged(currentItem: MediaItem?) {
         val currentMediaId = currentItem?.mediaId ?: return
-        if (currentMediaId == lastMediaId || currentMediaId == pendingMediaId) {
+        if (currentMediaId == lastMediaId) {
             reapplyLastAppliedVolume(engine.masterPlayer)
-        } else {
+        } else if (currentMediaId != pendingMediaId) {
             apply(currentItem)
         }
+        // If currentMediaId == pendingMediaId: IO is still reading tags for this new track.
+        // Do NOT reapply lastAppliedVolume (that's the previous song's volume) — doing so
+        // causes the audible bounce while we wait for the IO coroutine to finish.
     }
 }
