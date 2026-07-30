@@ -65,6 +65,14 @@ class ReplayGainManager @Inject constructor() {
         if (filePath.isBlank()) return null
         return synchronized(cache) { cache[filePath] }
     }
+    /**
+     * Removes the cached entry for the given file path so the next read
+     * fetches fresh tags from disk. Call this after editing a file's metadata.
+     */
+    fun clearCacheFor(filePath: String) {
+        if (filePath.isBlank()) return
+        synchronized(cache) { cache.remove(filePath) }
+    }
 
     fun readReplayGain(filePath: String): ReplayGainValues? {
         if (filePath.isBlank()) return null
