@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import timber.log.Timber
 import kotlin.math.abs
 
@@ -54,6 +55,7 @@ class ReplayGainProcessor(
     private var lastAppliedVolume: Float? = null
     // MediaId for which lastAppliedVolume was computed.
     private var lastMediaId: String? = null
+    private var pendingMediaId: String? = null
 
     fun setEnabled(value: Boolean) {
         enabled = value
@@ -138,6 +140,11 @@ class ReplayGainProcessor(
         }
 
         val mediaId = mediaItem.mediaId
+        if (mediaId == pendingMediaId) {
+            // Already reading RG for this exact track; don't restart the slow IO.
+            return
+        }
+        pendingMediaId = mediaId
         val filePath = mediaItem.mediaMetadata.extras
             ?.getString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH)
 
@@ -160,43 +167,55 @@ class ReplayGainProcessor(
 
         // Read ReplayGain tags on IO thread to avoid blocking main
         job = scope.launch {
-            val rgValues = withContext(Dispatchers.IO) {
-                replayGainManager.readReplayGain(filePath)
-            }
+            try {
+                val rgValues = try {
+                    withTimeout(2000) {
+                        withContext(Dispatchers.IO) {
+                            replayGainManager.readReplayGain(filePath)
+                        }
+                    }
+                } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                    null
+                }
 
-            if (currentRequestToken != requestToken) {
-                return@launch
-            }
+                if (currentRequestToken != requestToken) {
+                    return@launch
+                }
 
-            val currentMediaId = currentSessionMediaItem()?.mediaId
-            if (currentMediaId != mediaId) {
-                Timber.tag(TAG).d("ReplayGain: Ignoring stale result for mediaId=%s", mediaId)
-                return@launch
-            }
+                val currentMediaId = currentSessionMediaItem()?.mediaId
+                if (currentMediaId != mediaId) {
+                    Timber.tag(TAG).d("ReplayGain: Ignoring stale result for mediaId=%s", mediaId)
+                    return@launch
+                }
 
-            val volume = replayGainManager.getVolumeMultiplier(
-                rgValues,
-                useAlbumGain = resolvedUseAlbumGain
-            )
-
-            if (engine.isTransitionRunning()) {
-                // Store for application after transition completes.
-                // Also pass to engine so the crossfade loop ends at the correct RG
-                // volume instead of hard-coding 1f, preventing the audible jump.
-                pendingVolume = volume
-                engine.incomingTrackReplayGainVolume = volume
-                Timber.tag(TAG).d("ReplayGain: Stored pending volume=%.2f for %s (transition running)",
-                    volume, mediaItem.mediaMetadata.title
+                val volume = replayGainManager.getVolumeMultiplier(
+                    rgValues,
+                    useAlbumGain = resolvedUseAlbumGain
                 )
-            } else {
-                pendingVolume = null
-                engine.incomingTrackReplayGainVolume = null
-                lastAppliedVolume = volume
-                lastMediaId = mediaId
-                setPlayerVolume(engine.masterPlayer, volume)
-                Timber.tag(TAG).d("ReplayGain: Applied volume=%.2f for %s",
-                    volume, mediaItem.mediaMetadata.title
-                )
+
+                if (engine.isTransitionRunning()) {
+                    // Store for application after transition completes.
+                    // Also pass to engine so the crossfade loop ends at the correct RG
+                    // volume instead of hard-coding 1f, preventing the audible jump.
+                    pendingVolume = volume
+                    engine.incomingTrackReplayGainVolume = volume
+                    Timber.tag(TAG).d("ReplayGain: Stored pending volume=%.2f for %s (transition running)",
+                        volume, mediaItem.mediaMetadata.title
+                    )
+                } else {
+                    pendingVolume = null
+                    engine.incomingTrackReplayGainVolume = null
+                    lastAppliedVolume = volume
+                    lastMediaId = mediaId
+                    setPlayerVolume(engine.masterPlayer, volume)
+                    Timber.tag(TAG).d("ReplayGain: Applied volume=%.2f for %s",
+                        volume, mediaItem.mediaMetadata.title
+                    )
+                }
+            } finally {
+                if (pendingMediaId == mediaId) {
+                    pendingMediaId = null
+                }
             }
         }
     }
@@ -266,10 +285,10 @@ class ReplayGainProcessor(
      */
     fun onMediaMetadataChanged(currentItem: MediaItem?) {
         val currentMediaId = currentItem?.mediaId ?: return
-        if (currentMediaId != lastMediaId) {
-            apply(currentItem)
-        } else {
+        if (currentMediaId == lastMediaId || currentMediaId == pendingMediaId) {
             reapplyLastAppliedVolume(engine.masterPlayer)
+        } else {
+            apply(currentItem)
         }
     }
 }
