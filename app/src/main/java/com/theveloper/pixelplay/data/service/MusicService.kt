@@ -430,7 +430,6 @@ class MusicService : MediaLibraryService() {
         
         // Ensure engine is ready (re-initialize if service was restarted)
         engine.initialize()
-        replayGainProcessor.captureUserVolume(engine.masterPlayer.volume)
         syncLocalListeningStatsFromPlayer(engine.masterPlayer)
 
         engine.masterPlayer.addListener(playerListener)
