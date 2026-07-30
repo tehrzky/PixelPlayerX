@@ -289,15 +289,13 @@ class ReplayGainProcessor(
      * last known volume. [onMediaMetadataChanged] also fires on queue edits without a
      * track change, which would otherwise launch a redundant IO read and cause a spike.
      */
-    fun onMediaMetadataChanged(currentItem: MediaItem?) {
+        fun onMediaMetadataChanged(currentItem: MediaItem?) {
         val currentMediaId = currentItem?.mediaId ?: return
-        if (currentMediaId == lastMediaId) {
+        val cachedVolume = cachedVolumeFor(currentItem)
+        if (cachedVolume != null && cachedVolume == lastAppliedVolume) {
             reapplyLastAppliedVolume(engine.masterPlayer)
         } else if (currentMediaId != pendingMediaId) {
             apply(currentItem)
         }
-        // If currentMediaId == pendingMediaId: IO is still reading tags for this new track.
-        // Do NOT reapply lastAppliedVolume (that's the previous song's volume) — doing so
-        // causes the audible bounce while we wait for the IO coroutine to finish.
     }
 }
