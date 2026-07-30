@@ -1335,8 +1335,13 @@ class MusicService : MediaLibraryService() {
         override fun onTimelineChanged(timeline: Timeline, reason: Int) {
             widgetUpdateManager.requestFullUpdate(true)
             schedulePlaybackSnapshotPersist(immediate = timeline.isEmpty)
-            // Pre-fetch RG for the next track so the cache is warm before playback starts
             val player = engine.masterPlayer
+            // Pre-fetch RG for the current track so the cache is warm before playback starts
+            val currentItem = player.currentMediaItem
+            if (currentItem != null) {
+                runCatching { replayGainProcessor.prefetch(currentItem) }
+            }
+            // Pre-fetch RG for the next track too
             val nextIndex = player.nextMediaItemIndex
             if (nextIndex != androidx.media3.common.C.INDEX_UNSET) {
                 runCatching { replayGainProcessor.prefetch(player.getMediaItemAt(nextIndex)) }
