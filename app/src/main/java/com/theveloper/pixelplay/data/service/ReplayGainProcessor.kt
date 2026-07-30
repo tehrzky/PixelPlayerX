@@ -11,6 +11,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.delay
 import timber.log.Timber
 import kotlin.math.abs
 
@@ -136,8 +137,12 @@ class ReplayGainProcessor(
             pendingVolume = null
             lastAppliedVolume = null
             lastMediaId = null
+            if (!engine.isTransitionRunning()) {
+                setPlayerVolume(engine.masterPlayer, userSelectedVolume)
+            }
             return
         }
+
 
         val mediaId = mediaItem.mediaId
         if (mediaId == pendingMediaId) {
@@ -170,7 +175,7 @@ class ReplayGainProcessor(
                 setPlayerVolume(engine.masterPlayer, userSelectedVolume)
             }
         }
-        }
+    
 
             // Read ReplayGain tags on IO thread to avoid blocking main
         job = scope.launch {
