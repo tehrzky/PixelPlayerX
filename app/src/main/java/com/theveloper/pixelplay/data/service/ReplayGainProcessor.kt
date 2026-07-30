@@ -124,7 +124,7 @@ class ReplayGainProcessor(
      * Applies ReplayGain volume normalization to [mediaItem]. Reads RG tags from
      * the file on an IO thread and adjusts the master player's volume accordingly.
      */
-    fun apply(mediaItem: MediaItem?) {
+        fun apply(mediaItem: MediaItem?) {
         job?.cancel()
         requestToken += 1
         val currentRequestToken = requestToken
@@ -137,11 +137,13 @@ class ReplayGainProcessor(
             pendingVolume = null
             lastAppliedVolume = null
             lastMediaId = null
+            pendingMediaId = null
             if (!engine.isTransitionRunning()) {
                 setPlayerVolume(engine.masterPlayer, userSelectedVolume)
             }
             return
         }
+
 
 
         val mediaId = mediaItem.mediaId
