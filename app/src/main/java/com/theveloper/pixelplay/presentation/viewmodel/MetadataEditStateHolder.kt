@@ -95,6 +95,7 @@ class MetadataEditStateHolder @Inject constructor(
     private val libraryStateHolder: LibraryStateHolder,
     private val multiSelectionStateHolder: MultiSelectionStateHolder,
     private val albumArtThemeDao: AlbumArtThemeDao,
+    private val replayGainManager: com.theveloper.pixelplay.data.media.ReplayGainManager,
     @ApplicationContext private val context: Context
 ) {
 
@@ -263,7 +264,9 @@ class MetadataEditStateHolder @Inject constructor(
             
             // Force regenerate palette
             themeStateHolder.forceRegenerateColorScheme(refreshedAlbumArtUri)
-
+            // Clear ReplayGain cache so the next playback reads the newly written tags
+            replayGainManager.clearCacheFor(song.path)
+            
             MetadataEditResult(
                 success = true,
                 updatedSong = freshSong,
