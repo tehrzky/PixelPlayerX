@@ -1415,6 +1415,8 @@ class MusicService : MediaLibraryService() {
                     Timber.tag(TAG).d("Cleared end-of-track timer after manual track change")
                 }
             }
+            // Pre-fetch RG for the current track so the cache is warm
+            mediaItem?.let { replayGainProcessor.prefetch(it) }
             replayGainProcessor.apply(mediaSession?.player?.currentMediaItem)
             // Pre-fetch RG for the track after this one so it's cached when needed
             val player = engine.masterPlayer
@@ -1801,6 +1803,10 @@ class MusicService : MediaLibraryService() {
                 }
             } finally {
                 isRestoringPlaybackSnapshot = false
+                // Pre-warm ReplayGain cache for the current track
+                engine.masterPlayer.currentMediaItem?.let {
+                    replayGainProcessor.prefetch(it)
+                }
             }
         }
 
