@@ -13,8 +13,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import timber.log.Timber
 import kotlin.math.abs
-import android.os.SystemClock
-import kotlinx.coroutines.delay
 
 /**
  * Owns all ReplayGain volume-normalization state and logic, extracted from
@@ -98,24 +96,6 @@ class ReplayGainProcessor(
         player.volume = clampedVolume
     }
 
-    private suspend fun rampPlayerVolume(player: Player, targetVolume: Float, durationMs: Long = 400L) {
-        val clampedTarget = targetVolume.coerceIn(0f, 1f)
-        val startVolume = player.volume
-        if (abs(clampedTarget - startVolume) < 0.01f) {
-            setPlayerVolume(player, clampedTarget)
-            return
-        }
-        val stepMs = 32L
-        val startedAtMs = SystemClock.elapsedRealtime()
-        while (true) {
-            val elapsed = (SystemClock.elapsedRealtime() - startedAtMs).coerceAtMost(durationMs)
-            val progress = elapsed.toFloat() / durationMs
-            setPlayerVolume(player, startVolume + (clampedTarget - startVolume) * progress)
-            if (elapsed >= durationMs) break
-            delay(stepMs)
-        }
-    }
-
     /**
      * Re-applies the last computed RG volume immediately (no IO) unless a
      * crossfade is running, preventing a brief full-volume spike on resume,
@@ -178,11 +158,17 @@ class ReplayGainProcessor(
 
         val resolvedUseAlbumGain = useAlbumGain
 
-        // Use the neutral, no-adjustment volume as a placeholder while the IO coroutine
-        // reads this track's own tags — not the previous track's RG volume, which could
-        // be way off for this song and sound like a stuck or muted start.
+        // If the RG value is already cached (from prefetch), apply it instantly.
+        // Otherwise fall back to the user's chosen volume as a placeholder.
         if (!engine.isTransitionRunning()) {
-            setPlayerVolume(engine.masterPlayer, userSelectedVolume)
+            val cachedVolume = cachedVolumeFor(mediaItem)
+            if (cachedVolume != null) {
+                setPlayerVolume(engine.masterPlayer, cachedVolume)
+                lastAppliedVolume = cachedVolume
+                lastMediaId = mediaId
+            } else {
+                setPlayerVolume(engine.masterPlayer, userSelectedVolume)
+            }
         }
 
         // Read ReplayGain tags on IO thread to avoid blocking main
@@ -227,7 +213,7 @@ class ReplayGainProcessor(
                     engine.incomingTrackReplayGainVolume = null
                     lastAppliedVolume = volume
                     lastMediaId = mediaId
-                    rampPlayerVolume(engine.masterPlayer, volume)
+                    setPlayerVolume(engine.masterPlayer, volume)
                     Timber.tag(TAG).d("ReplayGain: Applied volume=%.2f for %s",
                         volume, mediaItem.mediaMetadata.title
                     )
