@@ -151,10 +151,11 @@ class ReplayGainProcessor(
 
         val resolvedUseAlbumGain = useAlbumGain
 
-        // Apply the last known RG volume immediately so there is no full-volume spike
-        // while the IO coroutine reads the tags for the new track.
+        // Use the neutral, no-adjustment volume as a placeholder while the IO coroutine
+        // reads this track's own tags — not the previous track's RG volume, which could
+        // be way off for this song and sound like a stuck or muted start.
         if (!engine.isTransitionRunning()) {
-            lastAppliedVolume?.let { setPlayerVolume(engine.masterPlayer, it) }
+            setPlayerVolume(engine.masterPlayer, userSelectedVolume)
         }
 
         // Read ReplayGain tags on IO thread to avoid blocking main
