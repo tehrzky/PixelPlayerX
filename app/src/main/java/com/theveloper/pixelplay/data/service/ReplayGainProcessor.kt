@@ -102,7 +102,7 @@ class ReplayGainProcessor(
      * same-track seeks, and queue edits.
      */
     fun reapplyLastAppliedVolume(player: Player) {
-        if (engine.isTransitionRunning()) return
+        if (!enabled || engine.isTransitionRunning()) return
         lastAppliedVolume?.let { setPlayerVolume(player, it) }
     }
 
@@ -113,6 +113,7 @@ class ReplayGainProcessor(
      * the transition is running) stores the result as a pending volume.
      */
     fun prepareForTransition(player: Player) {
+        if (!enabled) return
         val incomingItem = player.currentMediaItem
         cachedVolumeFor(incomingItem)?.let { engine.incomingTrackReplayGainVolume = it }
         apply(incomingItem)
@@ -133,9 +134,8 @@ class ReplayGainProcessor(
 
         if (!enabled) {
             pendingVolume = null
-            if (!engine.isTransitionRunning()) {
-                setPlayerVolume(engine.masterPlayer, userSelectedVolume)
-            }
+            lastAppliedVolume = null
+            lastMediaId = null
             return
         }
 
@@ -158,7 +158,7 @@ class ReplayGainProcessor(
 
         val resolvedUseAlbumGain = useAlbumGain
 
-        // If the RG value is already cached (from prefetch), apply it instantly.
+                // If the RG value is already cached (from prefetch), apply it instantly.
         // Otherwise fall back to the user's chosen volume as a placeholder.
         if (!engine.isTransitionRunning()) {
             val cachedVolume = cachedVolumeFor(mediaItem)
@@ -170,10 +170,18 @@ class ReplayGainProcessor(
                 setPlayerVolume(engine.masterPlayer, userSelectedVolume)
             }
         }
+        }
 
-        // Read ReplayGain tags on IO thread to avoid blocking main
+            // Read ReplayGain tags on IO thread to avoid blocking main
         job = scope.launch {
             try {
+                // Wait 500ms before hitting the file system. This gives ExoPlayer time to
+                // open and buffer the audio first, avoiding file contention that delays
+                // MP3 playback start (TagLib seeking through large ID3 tags competes with
+                // the decoder for disk access).
+                delay(500)
+                if (currentRequestToken != requestToken) return@launch
+
                 val rgValues = try {
                     withTimeout(2000) {
                         withContext(Dispatchers.IO) {
@@ -264,8 +272,7 @@ class ReplayGainProcessor(
         pendingVolume = null
 
         if (!enabled) {
-            setPlayerVolume(player, userSelectedVolume)
-            Timber.tag(TAG).d("ReplayGain: Transition finished, RG disabled — restored userSelectedVolume=%.2f", userSelectedVolume)
+            Timber.tag(TAG).d("ReplayGain: Transition finished, RG disabled — no volume change")
             return
         }
 
@@ -290,6 +297,7 @@ class ReplayGainProcessor(
      * track change, which would otherwise launch a redundant IO read and cause a spike.
      */
         fun onMediaMetadataChanged(currentItem: MediaItem?) {
+        if (!enabled) return
         val currentMediaId = currentItem?.mediaId ?: return
         val cachedVolume = cachedVolumeFor(currentItem)
         if (cachedVolume != null && cachedVolume == lastAppliedVolume) {
@@ -297,5 +305,6 @@ class ReplayGainProcessor(
         } else if (currentMediaId != pendingMediaId) {
             apply(currentItem)
         }
+    }
     }
 }
