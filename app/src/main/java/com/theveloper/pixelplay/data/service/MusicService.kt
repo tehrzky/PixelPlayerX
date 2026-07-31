@@ -1804,11 +1804,30 @@ class MusicService : MediaLibraryService() {
             else -> 0
         }
 
-        val preparedItems = restoredItems.toMutableList()
+                val preparedItems = restoredItems.toMutableList()
         preparedItems.getOrNull(resolvedIndex)?.let { currentItem ->
             val resolvedCurrentItem = runCatching { engine.resolveMediaItem(currentItem) }.getOrNull()
             if (resolvedCurrentItem != null && resolvedCurrentItem != currentItem) {
-                preparedItems[resolvedIndex] = resolvedCurrentItem
+                // resolveMediaItem() rebuilds from DB and drops filePath.
+                // Copy it back from the snapshot so ReplayGain can read tags.
+                val originalPath = currentItem.mediaMetadata.extras
+                    ?.getString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH)
+                val resolvedPath = resolvedCurrentItem.mediaMetadata.extras
+                    ?.getString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH)
+                val itemToUse = if (!originalPath.isNullOrBlank() && resolvedPath.isNullOrBlank()) {
+                    val newExtras = Bundle(resolvedCurrentItem.mediaMetadata.extras ?: Bundle())
+                    newExtras.putString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH, originalPath)
+                    resolvedCurrentItem.buildUpon()
+                        .setMediaMetadata(
+                            resolvedCurrentItem.mediaMetadata.buildUpon()
+                                .setExtras(newExtras)
+                                .build()
+                        )
+                        .build()
+                } else {
+                    resolvedCurrentItem
+                }
+                preparedItems[resolvedIndex] = itemToUse
             }
         }
 
@@ -2642,6 +2661,9 @@ class MusicService : MediaLibraryService() {
         }
         refreshMediaSessionUi(session)
         widgetUpdateManager.requestFullUpdate(true)
+        // Re-apply RG because shuffle rebuilds the timeline and may replace the
+        // current MediaItem with a new instance missing filePath extras.
+        replayGainProcessor.apply(session.player.currentMediaItem)
     }
 
     private fun setCurrentSongFavoriteState(
