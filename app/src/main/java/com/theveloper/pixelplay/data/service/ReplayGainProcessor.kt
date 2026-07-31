@@ -97,14 +97,15 @@ class ReplayGainProcessor(
         player.volume = clampedVolume
     }
 
-    /**
-     * Re-applies the last computed RG volume immediately (no IO) unless a
-     * crossfade is running, preventing a brief full-volume spike on resume,
-     * same-track seeks, and queue edits.
-     */
     fun reapplyLastAppliedVolume(player: Player) {
         if (!enabled || engine.isTransitionRunning()) return
-        lastAppliedVolume?.let { setPlayerVolume(player, it) }
+        // Only reapply if the cached volume actually belongs to the CURRENT track.
+        // Otherwise we bleed the previous track's gain into the new one
+        // while the IO coroutine is still reading tags.
+        val currentMediaId = currentSessionMediaItem()?.mediaId
+        if (currentMediaId != null && currentMediaId == lastMediaId) {
+            lastAppliedVolume?.let { setPlayerVolume(player, it) }
+        }
     }
 
     /**
@@ -155,8 +156,11 @@ class ReplayGainProcessor(
         val filePath = mediaItem.mediaMetadata.extras
             ?.getString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH)
 
-        if (filePath.isNullOrBlank()) {
+       if (filePath.isNullOrBlank()) {
             Timber.tag(TAG).d("ReplayGain: No file path for track, keeping user-selected volume")
+            lastAppliedVolume = null
+            lastMediaId = null
+            pendingMediaId = null
             if (!engine.isTransitionRunning()) {
                 setPlayerVolume(engine.masterPlayer, userSelectedVolume)
             }
@@ -182,21 +186,10 @@ class ReplayGainProcessor(
             // Read ReplayGain tags on IO thread to avoid blocking main
         job = scope.launch {
             try {
-                // Wait 500ms before hitting the file system. This gives ExoPlayer time to
-                // open and buffer the audio first, avoiding file contention that delays
-                // MP3 playback start (TagLib seeking through large ID3 tags competes with
-                // the decoder for disk access).
-                delay(500)
                 if (currentRequestToken != requestToken) return@launch
 
-                val rgValues = try {
-                    withTimeout(2000) {
-                        withContext(Dispatchers.IO) {
-                            replayGainManager.readReplayGain(filePath)
-                        }
-                    }
-                } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                    null
+                val rgValues = withContext(Dispatchers.IO) {
+                    replayGainManager.readReplayGain(filePath)
                 }
 
                 if (currentRequestToken != requestToken) {
@@ -298,16 +291,10 @@ class ReplayGainProcessor(
         }
     }
 
-    /**
-     * Recomputes RG only when the track actually changed; otherwise re-applies the
-     * last known volume. [onMediaMetadataChanged] also fires on queue edits without a
-     * track change, which would otherwise launch a redundant IO read and cause a spike.
-     */
-        fun onMediaMetadataChanged(currentItem: MediaItem?) {
+       fun onMediaMetadataChanged(currentItem: MediaItem?) {
         if (!enabled) return
         val currentMediaId = currentItem?.mediaId ?: return
-        val cachedVolume = cachedVolumeFor(currentItem)
-        if (cachedVolume != null && cachedVolume == lastAppliedVolume) {
+        if (currentMediaId == lastMediaId) {
             reapplyLastAppliedVolume(engine.masterPlayer)
         } else if (currentMediaId != pendingMediaId) {
             apply(currentItem)
