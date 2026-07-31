@@ -486,6 +486,7 @@ class MusicService : MediaLibraryService() {
                 equalizerManager.attachToAudioSessionIfNeeded(sessionId)
             }
 
+            
             // Re-attach equalizer whenever the active audio session changes (e.g. crossfade)
             engine.activeAudioSessionId.collect { newSessionId ->
                 if (newSessionId != 0) {
@@ -493,7 +494,17 @@ class MusicService : MediaLibraryService() {
                 }
             }
         }
-
+        serviceScope.launch {
+            // Re-apply ReplayGain whenever the player is rebuilt (Hi-Fi mode toggle, the
+            // MTK audio-offload stall fallback, or any future rebuild reason) — a rebuild
+            // swaps in a new player instance at default volume, and without this, RG only
+            // reappears once the user manually toggles it or changes tracks.
+            engine.activeAudioSessionId.collect { newSessionId ->
+                if (newSessionId != 0) {
+                    replayGainProcessor.apply(mediaSession?.player?.currentMediaItem)
+                }
+            }
+        }
         serviceScope.launch {
             userPreferencesRepository.keepPlayingInBackgroundFlow.collect { enabled ->
                 keepPlayingInBackground = enabled
