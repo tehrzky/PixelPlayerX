@@ -1720,6 +1720,9 @@ class MusicService : MediaLibraryService() {
                 ?.getLong(MediaItemBuilder.EXTERNAL_EXTRA_DURATION)
                 ?.takeIf { it > 0L }
 
+            val filePath = metadata.extras
+                ?.getString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH)
+                ?.takeIf { it.isNotBlank() }
             snapshotItems.add(
                 PlaybackQueueItemSnapshot(
                     mediaId = mediaItem.mediaId,
@@ -1884,6 +1887,9 @@ class MusicService : MediaLibraryService() {
             }
             snapshotItem.durationMs?.takeIf { it > 0L }?.let {
                 putLong(MediaItemBuilder.EXTERNAL_EXTRA_DURATION, it)
+            }
+            snapshotItem.filePath?.takeIf { it.isNotBlank() }?.let {
+                putString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH, it)
             }
             snapshotItem.filePath?.takeIf { it.isNotBlank() }?.let {
                 putString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH, it)
