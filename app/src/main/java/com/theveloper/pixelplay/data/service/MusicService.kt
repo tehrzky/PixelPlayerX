@@ -1910,9 +1910,6 @@ class MusicService : MediaLibraryService() {
             snapshotItem.filePath?.takeIf { it.isNotBlank() }?.let {
                 putString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH, it)
             }
-            snapshotItem.filePath?.takeIf { it.isNotBlank() }?.let {
-                putString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH, it)
-            }
         }
         metadataBuilder.setExtras(extras)
 
