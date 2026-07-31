@@ -589,6 +589,7 @@ class MusicService : MediaLibraryService() {
                     MusicNotificationProvider.CUSTOM_COMMAND_SET_SLEEP_TIMER_DURATION,
                     MusicNotificationProvider.CUSTOM_COMMAND_SET_SLEEP_TIMER_END_OF_TRACK,
                     MusicNotificationProvider.CUSTOM_COMMAND_CANCEL_SLEEP_TIMER,
+                    MusicNotificationProvider.CUSTOM_COMMAND_REFRESH_REPLAYGAIN,
                 ).map { SessionCommand(it, Bundle.EMPTY) }
 
                 val sessionCommandsBuilder = SessionCommands.Builder()
