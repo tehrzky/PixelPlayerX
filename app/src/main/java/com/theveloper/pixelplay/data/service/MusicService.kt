@@ -719,7 +719,6 @@ class MusicService : MediaLibraryService() {
                             targetFavoriteState = enabled
                         )
                     }
-                }
                     MusicNotificationProvider.CUSTOM_COMMAND_REFRESH_REPLAYGAIN -> {
                         val editedPath = args.getString(MusicNotificationProvider.EXTRA_REPLAYGAIN_FILE_PATH)
                         val currentItem = session.player.currentMediaItem
@@ -732,7 +731,8 @@ class MusicService : MediaLibraryService() {
                             replayGainProcessor.apply(currentItem)
                         }
                     }
-
+                }
+        
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
 
