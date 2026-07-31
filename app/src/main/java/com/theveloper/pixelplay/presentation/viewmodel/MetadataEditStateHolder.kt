@@ -266,6 +266,15 @@ class MetadataEditStateHolder @Inject constructor(
             themeStateHolder.forceRegenerateColorScheme(refreshedAlbumArtUri)
             // Clear ReplayGain cache so the next playback reads the newly written tags
             replayGainManager.clearCacheFor(song.path)
+            playbackStateHolder.mediaController?.sendCustomCommand(
+                androidx.media3.session.SessionCommand(
+                    MusicNotificationProvider.CUSTOM_COMMAND_REFRESH_REPLAYGAIN,
+                    android.os.Bundle()
+                ),
+                android.os.Bundle().apply {
+                    putString(MusicNotificationProvider.EXTRA_REPLAYGAIN_FILE_PATH, song.path)
+                }
+            )
             
             MetadataEditResult(
                 success = true,
