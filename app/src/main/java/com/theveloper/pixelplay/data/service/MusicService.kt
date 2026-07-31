@@ -719,6 +719,19 @@ class MusicService : MediaLibraryService() {
                         )
                     }
                 }
+                    MusicNotificationProvider.CUSTOM_COMMAND_REFRESH_REPLAYGAIN -> {
+                        val editedPath = args.getString(MusicNotificationProvider.EXTRA_REPLAYGAIN_FILE_PATH)
+                        val currentItem = session.player.currentMediaItem
+                        val currentPath = currentItem?.mediaMetadata?.extras
+                            ?.getString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH)
+                        // Only the currently playing track needs a live re-apply — the cache for
+                        // every other edited song was already cleared, so it just reads fresh on
+                        // its next natural transition.
+                        if (!editedPath.isNullOrBlank() && editedPath == currentPath) {
+                            replayGainProcessor.apply(currentItem)
+                        }
+                    }
+
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
 
