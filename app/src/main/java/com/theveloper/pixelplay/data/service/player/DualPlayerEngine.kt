@@ -113,9 +113,18 @@ internal fun shouldDisableAudioOffloadByDefaultForDevice(
             hardwareName.contains("mediatek") ||
             hardwareName.contains("mtk")
     val isReportedLxxFamily = modelName.startsWith("lxx") && isLavaDevice
-    val isMtkLavaVariant = isLavaDevice && looksLikeMtkHardware
+    if (sdkInt >= 35 && isReportedLxxFamily) return true
 
-    return sdkInt >= 35 && (isReportedLxxFamily || isMtkLavaVariant)
+    // The MediaTek offload HAL silently stops producing audio for MP3 playback on several
+    // devices (confirmed on Lava Lxx-series, SDK 35+, and Infinix X6871, SDK 34). The app's
+    // own 4s stall watchdog (AUDIO_OFFLOAD_STALL_FALLBACK_MS in scheduleAudioOffloadFallbackIfNeeded)
+    // eventually catches it and rebuilds the player without offload, but that whole detection
+    // window shows up as a multi-second "stuck loading" delay on every cold start. Since the
+    // bug reproduces across brands sharing the same chipset family, key off the hardware string
+    // rather than a single OEM, and lower the floor to SDK 34 to cover the confirmed Infinix case.
+    if (looksLikeMtkHardware && sdkInt >= 34) return true
+
+    return false
 }
 
 internal fun shouldTriggerAudioOffloadStallFallback(

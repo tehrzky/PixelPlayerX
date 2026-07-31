@@ -19,6 +19,24 @@ class AudioOffloadPolicyTest {
         assertThat(disabled).isTrue()
     }
 
+
+    @Test
+    fun defaultPolicy_disablesOffloadForInfinixMtkDeviceOnAndroid14() {
+        // Regression test: Infinix X6871 (MediaTek, SDK 34) offload HAL silently produced no
+        // audio for MP3 playback, only recovering after the 4s stall-fallback watchdog fired
+        // (observed playback_prepare ≈ 4210ms on every cold start). Same failure family as the
+        // Lava Lxx-series MTK devices below, different OEM.
+        val disabled = shouldDisableAudioOffloadByDefaultForDevice(
+            manufacturer = "INFINIX",
+            brand = "Infinix",
+            model = "Infinix X6871",
+            hardware = "mt6789",
+            sdkInt = 34
+        )
+
+        assertThat(disabled).isTrue()
+    }
+    
     @Test
     fun defaultPolicy_keepsOffloadForPixelOnAndroid15() {
         val disabled = shouldDisableAudioOffloadByDefaultForDevice(
