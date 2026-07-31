@@ -920,7 +920,16 @@ class MusicService : MediaLibraryService() {
             }
         }
         serviceScope.launch {
+            // Prime ReplayGain state synchronously before the queue restores, mirroring
+            // the equalizer's restoreState() pattern above. Without this, the async
+            // replayGainEnabledFlow.collect() further up can still be waiting on its first
+            // DataStore emission when the queue restore finishes and sets the first track —
+            // RG silently no-ops while `enabled` is still false, and never gets applied
+            // until the user toggles the setting or changes tracks.
+            replayGainProcessor.setEnabled(userPreferencesRepository.replayGainEnabledFlow.first())
+            replayGainProcessor.setUseAlbumGain(userPreferencesRepository.replayGainUseAlbumGainFlow.first())
             restorePlaybackQueueSnapshotIfNeeded()
+            replayGainProcessor.apply(mediaSession?.player?.currentMediaItem)
             mediaSession?.let { refreshMediaSessionUi(it) }
             widgetUpdateManager.requestFullUpdate(true)
         }
