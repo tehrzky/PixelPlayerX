@@ -1729,6 +1729,7 @@ class MusicService : MediaLibraryService() {
                     albumTitle = metadata.albumTitle?.toString(),
                     artworkUri = resolveStoredArtworkUriString(metadata),
                     durationMs = durationMs,
+                    filePath = filePath,
                 )
             )
         }
@@ -1883,6 +1884,9 @@ class MusicService : MediaLibraryService() {
             }
             snapshotItem.durationMs?.takeIf { it > 0L }?.let {
                 putLong(MediaItemBuilder.EXTERNAL_EXTRA_DURATION, it)
+            }
+            snapshotItem.filePath?.takeIf { it.isNotBlank() }?.let {
+                putString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH, it)
             }
         }
         metadataBuilder.setExtras(extras)
