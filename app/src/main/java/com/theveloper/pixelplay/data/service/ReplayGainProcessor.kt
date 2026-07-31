@@ -158,27 +158,43 @@ class ReplayGainProcessor(
 
        if (filePath.isNullOrBlank()) {
             Timber.tag(TAG).d("ReplayGain: No file path for track, keeping user-selected volume")
-            lastAppliedVolume = null
-            lastMediaId = null
+            // Only wipe state if this is a different track. If it's the same track
+            // (timeline rebuild after shuffle), preserve lastAppliedVolume so
+            // reapplyLastAppliedVolume() still works.
+            if (mediaId != lastMediaId) {
+                lastAppliedVolume = null
+                lastMediaId = null
+            }
             pendingMediaId = null
             if (!engine.isTransitionRunning()) {
-                setPlayerVolume(engine.masterPlayer, userSelectedVolume)
+                if (mediaId == lastMediaId && lastAppliedVolume != null) {
+                    setPlayerVolume(engine.masterPlayer, lastAppliedVolume!!)
+                } else {
+                    setPlayerVolume(engine.masterPlayer, userSelectedVolume)
+                }
             }
             return
         }
 
         val resolvedUseAlbumGain = useAlbumGain
 
-                // If the RG value is already cached (from prefetch), apply it instantly.
-        // Otherwise fall back to the user's chosen volume as a placeholder.
-        if (!engine.isTransitionRunning()) {
+            if (!engine.isTransitionRunning()) {
             val cachedVolume = cachedVolumeFor(mediaItem)
-            if (cachedVolume != null) {
-                setPlayerVolume(engine.masterPlayer, cachedVolume)
-                lastAppliedVolume = cachedVolume
-                lastMediaId = mediaId
-            } else {
-                setPlayerVolume(engine.masterPlayer, userSelectedVolume)
+            when {
+                cachedVolume != null -> {
+                    setPlayerVolume(engine.masterPlayer, cachedVolume)
+                    lastAppliedVolume = cachedVolume
+                    lastMediaId = mediaId
+                }
+                mediaId == lastMediaId && lastAppliedVolume != null -> {
+                    // Same track we played before (e.g. repeat) — use last known RG instantly
+                    setPlayerVolume(engine.masterPlayer, lastAppliedVolume!!)
+                }
+                else -> {
+                    // New track with no cache: don't touch volume yet.
+                    // The IO coroutine will set it when ready.
+                    // This kills the "full blast then snap to RG" jump.
+                }
             }
         }
     
