@@ -18,4 +18,6 @@ object MusicNotificationProvider {
     const val CUSTOM_COMMAND_CANCEL_SLEEP_TIMER = "com.theveloper.pixelplay.CANCEL_SLEEP_TIMER"
     const val EXTRA_SLEEP_TIMER_MINUTES = "com.theveloper.pixelplay.extra.SLEEP_TIMER_MINUTES"
     const val EXTRA_END_OF_TRACK_ENABLED = "com.theveloper.pixelplay.extra.END_OF_TRACK_ENABLED"
+    const val CUSTOM_COMMAND_REFRESH_REPLAYGAIN = "com.theveloper.pixelplay.REFRESH_REPLAYGAIN"
+    const val EXTRA_REPLAYGAIN_FILE_PATH = "com.theveloper.pixelplay.extra.REPLAYGAIN_FILE_PATH"
 }
