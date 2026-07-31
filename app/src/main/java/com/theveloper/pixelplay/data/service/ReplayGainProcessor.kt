@@ -157,34 +157,29 @@ class ReplayGainProcessor(
             ?.getString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH)
 
        if (filePath.isNullOrBlank()) {
-            Timber.tag(TAG).d("ReplayGain: No file path for track, keeping user-selected volume")
-            // Only wipe state if this is a different track. If it's the same track
-            // (timeline rebuild after shuffle), preserve lastAppliedVolume so
-            // reapplyLastAppliedVolume() still works.
-            if (mediaId != lastMediaId) {
-                lastAppliedVolume = null
-                lastMediaId = null
-            }
+            Timber.tag(TAG).d("ReplayGain: No file path for track, skipping")
             pendingMediaId = null
-            if (!engine.isTransitionRunning()) {
-                if (mediaId == lastMediaId && lastAppliedVolume != null) {
-                    setPlayerVolume(engine.masterPlayer, lastAppliedVolume!!)
-                } else {
-                    setPlayerVolume(engine.masterPlayer, userSelectedVolume)
-                }
-            }
+            // Never blast volume when filePath is missing. If this is the same track,
+            // the early return above (mediaId == lastMediaId) already handled it.
+            // If it's a new track with missing path, we simply can't compute RG yet.
             return
         }
 
         val resolvedUseAlbumGain = useAlbumGain
 
-            if (!engine.isTransitionRunning()) {
+        if (!engine.isTransitionRunning()) {
             val cachedVolume = cachedVolumeFor(mediaItem)
+            val isCurrentTrack = currentSessionMediaItem()?.mediaId == mediaId
             when {
                 cachedVolume != null -> {
                     setPlayerVolume(engine.masterPlayer, cachedVolume)
-                    lastAppliedVolume = cachedVolume
-                    lastMediaId = mediaId
+                    // Only update persistent state if this is actually the current track.
+                    // Pre-fetch calls or timeline shuffles can call apply() on non-playing
+                    // tracks; we must not overwrite the current track's RG with theirs.
+                    if (isCurrentTrack) {
+                        lastAppliedVolume = cachedVolume
+                        lastMediaId = mediaId
+                    }
                 }
                 mediaId == lastMediaId && lastAppliedVolume != null -> {
                     // Same track we played before (e.g. repeat) — use last known RG instantly
@@ -193,7 +188,6 @@ class ReplayGainProcessor(
                 else -> {
                     // New track with no cache: don't touch volume yet.
                     // The IO coroutine will set it when ready.
-                    // This kills the "full blast then snap to RG" jump.
                 }
             }
         }
@@ -223,7 +217,7 @@ class ReplayGainProcessor(
                     useAlbumGain = resolvedUseAlbumGain
                 )
 
-                if (engine.isTransitionRunning()) {
+               if (engine.isTransitionRunning()) {
                     // Store for application after transition completes.
                     // Also pass to engine so the crossfade loop ends at the correct RG
                     // volume instead of hard-coding 1f, preventing the audible jump.
@@ -235,12 +229,19 @@ class ReplayGainProcessor(
                 } else {
                     pendingVolume = null
                     engine.incomingTrackReplayGainVolume = null
-                    lastAppliedVolume = volume
-                    lastMediaId = mediaId
-                    setPlayerVolume(engine.masterPlayer, volume)
-                    Timber.tag(TAG).d("ReplayGain: Applied volume=%.2f for %s",
-                        volume, mediaItem.mediaMetadata.title
-                    )
+                    val stillCurrent = currentSessionMediaItem()?.mediaId == mediaId
+                    if (stillCurrent) {
+                        lastAppliedVolume = volume
+                        lastMediaId = mediaId
+                        setPlayerVolume(engine.masterPlayer, volume)
+                        Timber.tag(TAG).d("ReplayGain: Applied volume=%.2f for %s",
+                            volume, mediaItem.mediaMetadata.title
+                        )
+                    } else {
+                        Timber.tag(TAG).d("ReplayGain: IO finished for non-current track %s, ignoring",
+                            mediaItem.mediaMetadata.title
+                        )
+                    }
                 }
             } finally {
                 if (pendingMediaId == mediaId) {
@@ -313,7 +314,14 @@ class ReplayGainProcessor(
         if (currentMediaId == lastMediaId) {
             reapplyLastAppliedVolume(engine.masterPlayer)
         } else if (currentMediaId != pendingMediaId) {
-            apply(currentItem)
+            // Only call apply() if we have a filePath. onMediaMetadataChanged fires
+            // frequently with incomplete MediaItems that lack filePath, causing
+            // redundant no-path hits and volume spikes.
+            val hasPath = !currentItem.mediaMetadata.extras
+                ?.getString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH).isNullOrBlank()
+            if (hasPath) {
+                apply(currentItem)
+            }
         }
     }
     }
