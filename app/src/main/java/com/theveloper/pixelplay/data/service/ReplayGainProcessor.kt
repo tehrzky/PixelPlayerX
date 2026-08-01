@@ -118,6 +118,21 @@ class ReplayGainProcessor(
     }
 
     /**
+     * Forces a fresh ReplayGain re-read for [mediaItem], even if we already have an
+     * applied volume cached for this exact track. Use this when the underlying
+     * file's tags just changed (a metadata edit) — apply()'s normal fast path would
+     * otherwise just reassert the now-stale cached volume instead of re-reading.
+     */
+    fun forceRefresh(mediaItem: MediaItem?) {
+        if (mediaItem == null) return
+        if (mediaItem.mediaId == lastAppliedMediaId) {
+            lastAppliedVolume = null
+            lastAppliedMediaId = null
+        }
+        apply(mediaItem)
+    }
+    
+    /**
      * Single entry point for applying ReplayGain to [mediaItem]. Safe to call
      * repeatedly and from anywhere (track transitions, metadata updates, shuffle,
      * enable/disable toggles, player rebuilds) — every call re-evaluates from
