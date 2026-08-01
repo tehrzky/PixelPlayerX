@@ -16,19 +16,18 @@ import timber.log.Timber
 import kotlin.math.abs
 
 /**
- * Owns all ReplayGain volume-normalization state and logic, extracted from
- * [MusicService] during the Pass 5 service decomposition.
+ * Owns all ReplayGain volume-normalization state and logic.
  *
- * The processor encapsulates the RG enable/album-gain flags, the in-flight IO
- * read job, the "expected vs. user-selected" volume bookkeeping that keeps a
- * programmatic RG volume change from being mistaken for a user gesture, and the
- * crossfade-aware application of the computed gain. It reaches the players only
- * through the injected [DualPlayerEngine]; the service supplies the current
- * session media item via [currentSessionMediaItem] so stale IO results can be
- * discarded.
- *
- * All public methods are main-thread affine (the IO tag read is dispatched
- * internally), matching the original in-service behaviour.
+ * Design note (rewritten to fix cold-start / hit-and-miss reliability): every
+ * caller — apply(), onMediaMetadataChanged(), prepareForTransition(), the
+ * shuffle/rebuild hook, the enable/disable toggle — funnels through the single
+ * [apply] decision path below. There is exactly one place that decides "do I
+ * already know this track's volume", "is a file path available yet", and
+ * "should I kick off an IO read". Earlier versions duplicated that decision in
+ * three places and they could disagree, which is what caused RG to silently
+ * and permanently give up on a track whose MediaItem didn't have its file path
+ * populated yet (a transient condition, not a permanent one) until some
+ * unrelated trigger happened to retry it later.
  */
 class ReplayGainProcessor(
     private val engine: DualPlayerEngine,
@@ -51,12 +50,9 @@ class ReplayGainProcessor(
     private var expectedVolume: Float? = null
     // RG volume computed mid-crossfade, applied once the transition finishes.
     private var pendingVolume: Float? = null
-    // Last successfully applied RG volume — avoids a full-volume spike during the
-    // IO read for the next track (Repeat/Shuffle/Queue changes).
+    // Last successfully applied RG volume, and which track it belongs to.
     private var lastAppliedVolume: Float? = null
-    // MediaId for which lastAppliedVolume was computed.
-    private var lastMediaId: String? = null
-    private var pendingMediaId: String? = null
+    private var lastAppliedMediaId: String? = null
 
     fun setEnabled(value: Boolean) {
         enabled = value
@@ -97,13 +93,13 @@ class ReplayGainProcessor(
         player.volume = clampedVolume
     }
 
+    /** Re-applies the last computed RG volume immediately (no IO), only if it still
+     * belongs to the current track — otherwise a stale gain could bleed into a
+     * different song while a fresh read is in flight. */
     fun reapplyLastAppliedVolume(player: Player) {
         if (!enabled || engine.isTransitionRunning()) return
-        // Only reapply if the cached volume actually belongs to the CURRENT track.
-        // Otherwise we bleed the previous track's gain into the new one
-        // while the IO coroutine is still reading tags.
         val currentMediaId = currentSessionMediaItem()?.mediaId
-        if (currentMediaId != null && currentMediaId == lastMediaId) {
+        if (currentMediaId != null && currentMediaId == lastAppliedMediaId) {
             lastAppliedVolume?.let { setPlayerVolume(player, it) }
         }
     }
@@ -122,140 +118,101 @@ class ReplayGainProcessor(
     }
 
     /**
-     * Applies ReplayGain volume normalization to [mediaItem]. Reads RG tags from
-     * the file on an IO thread and adjusts the master player's volume accordingly.
+     * Single entry point for applying ReplayGain to [mediaItem]. Safe to call
+     * repeatedly and from anywhere (track transitions, metadata updates, shuffle,
+     * enable/disable toggles, player rebuilds) — every call re-evaluates from
+     * scratch what's actually known right now, so a call that can't do anything
+     * yet (e.g. file path not populated) is a harmless no-op, not a dead end.
      */
-        fun apply(mediaItem: MediaItem?) {
+    fun apply(mediaItem: MediaItem?) {
         job?.cancel()
         requestToken += 1
-        val currentRequestToken = requestToken
+        val myToken = requestToken
 
-        if (mediaItem == null) {
-            return
-        }
+        if (mediaItem == null) return
 
         if (!enabled) {
             pendingVolume = null
             lastAppliedVolume = null
-            lastMediaId = null
-            pendingMediaId = null
+            lastAppliedMediaId = null
             if (!engine.isTransitionRunning()) {
                 setPlayerVolume(engine.masterPlayer, userSelectedVolume)
             }
             return
         }
 
-
-
         val mediaId = mediaItem.mediaId
-        if (mediaId == pendingMediaId) {
-            // Already reading RG for this exact track; don't restart the slow IO.
-            return
-        }
-        // If we already have a computed RG volume for this exact track,
-        // just reapply it and don't restart IO. This prevents file-lock
-        // races when Media3 fires redundant callbacks on the same song.
-        if (mediaId == lastMediaId && lastAppliedVolume != null) {
+
+        // Fast path 1: we already applied RG for this exact track — just reassert it.
+        if (mediaId == lastAppliedMediaId && lastAppliedVolume != null) {
             if (!engine.isTransitionRunning()) {
                 setPlayerVolume(engine.masterPlayer, lastAppliedVolume!!)
             }
             return
         }
-        pendingMediaId = mediaId
+
+        // Fast path 2: ReplayGainManager already has the tags cached (from a
+        // prefetch or an earlier read) — apply instantly, no IO needed.
+        val cachedVolume = cachedVolumeFor(mediaItem)
+        if (cachedVolume != null) {
+            if (!engine.isTransitionRunning()) {
+                setPlayerVolume(engine.masterPlayer, cachedVolume)
+            }
+            lastAppliedVolume = cachedVolume
+            lastAppliedMediaId = mediaId
+            return
+        }
+
         val filePath = mediaItem.mediaMetadata.extras
             ?.getString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH)
-
-       if (filePath.isNullOrBlank()) {
-            Timber.tag(TAG).d("ReplayGain: No file path for track, skipping")
-            pendingMediaId = null
-            // Never blast volume when filePath is missing. If this is the same track,
-            // the early return above (mediaId == lastMediaId) already handled it.
-            // If it's a new track with missing path, we simply can't compute RG yet.
+        if (filePath.isNullOrBlank()) {
+            // Can't compute yet. Deliberately not touching lastAppliedMediaId/volume
+            // or the player volume here — this is a "not ready yet", not a failure.
+            // The next natural trigger (onMediaMetadataChanged once the item's full
+            // metadata lands, a player rebuild, a track change) will call apply()
+            // again and this time the file path will likely be populated.
+            Timber.tag(TAG).d("ReplayGain: file path not yet available for %s, will retry on next trigger", mediaId)
             return
         }
 
         val resolvedUseAlbumGain = useAlbumGain
 
-        if (!engine.isTransitionRunning()) {
-            val cachedVolume = cachedVolumeFor(mediaItem)
-            val isCurrentTrack = currentSessionMediaItem()?.mediaId == mediaId
-            when {
-                cachedVolume != null -> {
-                    setPlayerVolume(engine.masterPlayer, cachedVolume)
-                    // Only update persistent state if this is actually the current track.
-                    // Pre-fetch calls or timeline shuffles can call apply() on non-playing
-                    // tracks; we must not overwrite the current track's RG with theirs.
-                    if (isCurrentTrack) {
-                        lastAppliedVolume = cachedVolume
-                        lastMediaId = mediaId
-                    }
-                }
-                mediaId == lastMediaId && lastAppliedVolume != null -> {
-                    // Same track we played before (e.g. repeat) — use last known RG instantly
-                    setPlayerVolume(engine.masterPlayer, lastAppliedVolume!!)
-                }
-                else -> {
-                    // New track with no cache: don't touch volume yet.
-                    // The IO coroutine will set it when ready.
-                }
-            }
-        }
-    
-
-            // Read ReplayGain tags on IO thread to avoid blocking main
+        // Read ReplayGain tags on an IO thread. The 500ms delay both avoids
+        // competing with the decoder for disk access right as a track starts
+        // (TagLib seeking through large ID3 tags on the same file the decoder is
+        // opening), and self-debounces: apply() cancels `job` on every call, so a
+        // burst of calls in quick succession only ever performs the last one's read.
         job = scope.launch {
-            try {
-                if (currentRequestToken != requestToken) return@launch
+            delay(500)
+            if (myToken != requestToken) return@launch
 
-                val rgValues = withContext(Dispatchers.IO) {
-                    replayGainManager.readReplayGain(filePath)
-                }
-
-                if (currentRequestToken != requestToken) {
-                    return@launch
-                }
-
-                val currentMediaId = currentSessionMediaItem()?.mediaId
-                if (currentMediaId != mediaId) {
-                    Timber.tag(TAG).d("ReplayGain: Ignoring stale result for mediaId=%s", mediaId)
-                    return@launch
-                }
-
-                val volume = replayGainManager.getVolumeMultiplier(
-                    rgValues,
-                    useAlbumGain = resolvedUseAlbumGain
-                )
-
-               if (engine.isTransitionRunning()) {
-                    // Store for application after transition completes.
-                    // Also pass to engine so the crossfade loop ends at the correct RG
-                    // volume instead of hard-coding 1f, preventing the audible jump.
-                    pendingVolume = volume
-                    engine.incomingTrackReplayGainVolume = volume
-                    Timber.tag(TAG).d("ReplayGain: Stored pending volume=%.2f for %s (transition running)",
-                        volume, mediaItem.mediaMetadata.title
-                    )
-                } else {
-                    pendingVolume = null
-                    engine.incomingTrackReplayGainVolume = null
-                    val stillCurrent = currentSessionMediaItem()?.mediaId == mediaId
-                    if (stillCurrent) {
-                        lastAppliedVolume = volume
-                        lastMediaId = mediaId
-                        setPlayerVolume(engine.masterPlayer, volume)
-                        Timber.tag(TAG).d("ReplayGain: Applied volume=%.2f for %s",
-                            volume, mediaItem.mediaMetadata.title
-                        )
-                    } else {
-                        Timber.tag(TAG).d("ReplayGain: IO finished for non-current track %s, ignoring",
-                            mediaItem.mediaMetadata.title
-                        )
+            val rgValues = try {
+                withTimeout(2000) {
+                    withContext(Dispatchers.IO) {
+                        replayGainManager.readReplayGain(filePath)
                     }
                 }
-            } finally {
-                if (pendingMediaId == mediaId) {
-                    pendingMediaId = null
-                }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                null
+            }
+
+            if (myToken != requestToken) return@launch
+            if (currentSessionMediaItem()?.mediaId != mediaId) {
+                Timber.tag(TAG).d("ReplayGain: ignoring stale result for %s (track changed)", mediaId)
+                return@launch
+            }
+
+            val volume = replayGainManager.getVolumeMultiplier(rgValues, useAlbumGain = resolvedUseAlbumGain)
+
+            if (engine.isTransitionRunning()) {
+                pendingVolume = volume
+                engine.incomingTrackReplayGainVolume = volume
+                Timber.tag(TAG).d("ReplayGain: stored pending volume=%.2f for %s (transition running)", volume, mediaId)
+            } else {
+                lastAppliedVolume = volume
+                lastAppliedMediaId = mediaId
+                setPlayerVolume(engine.masterPlayer, volume)
+                Timber.tag(TAG).d("ReplayGain: applied volume=%.2f for %s", volume, mediaId)
             }
         }
     }
@@ -276,7 +233,7 @@ class ReplayGainProcessor(
     /**
      * Pre-fetches ReplayGain tags for a media item into the cache without applying the volume.
      * Called on queue changes and track transitions so the cache is warm by the time
-     * [apply] runs, avoiding the 1-2s JNI read delay on playback start.
+     * [apply] runs, avoiding the read delay on playback start.
      */
     fun prefetch(mediaItem: MediaItem?) {
         if (!enabled || mediaItem == null) return
@@ -303,34 +260,25 @@ class ReplayGainProcessor(
         }
 
         if (pending != null) {
-            // The crossfade loop ramps to this value; apply it now as the stable post-fade volume.
-            // Also update lastAppliedVolume so any subsequent onPositionDiscontinuity
-            // (REASON_AUTO_TRANSITION fires right after crossfade ends) uses this value
-            // immediately instead of launching a new IO coroutine and causing a spike.
             lastAppliedVolume = pending
+            lastAppliedMediaId = currentSessionMediaItem()?.mediaId
             setPlayerVolume(player, pending)
             Timber.tag(TAG).d("ReplayGain: Transition finished, applied pending volume=%.2f", pending)
         } else {
-            // No pending volume was computed during transition, trigger full computation
             apply(currentSessionMediaItem())
             Timber.tag(TAG).d("ReplayGain: Transition finished, no pending volume — triggering full recomputation")
         }
     }
 
-       fun onMediaMetadataChanged(currentItem: MediaItem?) {
+    /**
+     * Notifies the processor that the current track's metadata changed — covers
+     * both real track transitions and cases where a MediaItem is replaced/rebuilt
+     * in place (queue edits, shuffle, player rebuilds) with metadata that may now
+     * include a file path it didn't have before. Just forwards to [apply], which
+     * already knows how to no-op safely if there's nothing new to do.
+     */
+    fun onMediaMetadataChanged(currentItem: MediaItem?) {
         if (!enabled) return
-        val currentMediaId = currentItem?.mediaId ?: return
-        if (currentMediaId == lastMediaId) {
-            reapplyLastAppliedVolume(engine.masterPlayer)
-        } else if (currentMediaId != pendingMediaId) {
-            // Only call apply() if we have a filePath. onMediaMetadataChanged fires
-            // frequently with incomplete MediaItems that lack filePath, causing
-            // redundant no-path hits and volume spikes.
-            val hasPath = !currentItem.mediaMetadata.extras
-                ?.getString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH).isNullOrBlank()
-            if (hasPath) {
-                apply(currentItem)
-            }
-        }
+        apply(currentItem)
     }
-    }
+}
