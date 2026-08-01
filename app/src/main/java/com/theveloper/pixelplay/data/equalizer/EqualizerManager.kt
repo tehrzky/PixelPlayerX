@@ -138,21 +138,17 @@ class EqualizerManager @Inject constructor() {
      * Attaches the equalizer to an audio session ID.
      * Call this when the player is created or swapped during crossfade.
      */
-    /**
-     * Attaches the equalizer to an audio session ID.
-     * Call this when the player is created or swapped during crossfade.
-     */
-    suspend fun attachToAudioSession(audioSessionId: Int) {
+    suspend fun attachToAudioSession(audioSessionId: Int, source: String = "unknown") {
         if (AdvancedPerformanceDiagnostics.isEnabled) {
             AdvancedPerformanceDiagnostics.traceSuspend("Equalizer.attachToAudioSession") {
-                attachToAudioSessionInternal(audioSessionId)
+                attachToAudioSessionInternal(audioSessionId, source)
             }
         } else {
-            attachToAudioSessionInternal(audioSessionId)
+            attachToAudioSessionInternal(audioSessionId, source)
         }
     }
 
-    private suspend fun attachToAudioSessionInternal(audioSessionId: Int) = attachMutex.withLock {
+    private suspend fun attachToAudioSessionInternal(audioSessionId: Int, source: String) = attachMutex.withLock {
         val attachStartedMs = if (AdvancedPerformanceDiagnostics.isEnabled) {
             SystemClock.elapsedRealtime()
         } else {
@@ -163,7 +159,7 @@ class EqualizerManager @Inject constructor() {
             name = "equalizer_attach_start",
             elapsedRealtimeMs = attachStartedMs
         ) {
-            mapOf("audioSessionId" to audioSessionId.toString())
+            mapOf("audioSessionId" to audioSessionId.toString(),"source" to source)
         }
         if (effectsDisabledForProcess) {
             Timber.tag(TAG).d(
@@ -176,7 +172,8 @@ class EqualizerManager @Inject constructor() {
             ) {
                 mapOf(
                     "audioSessionId" to audioSessionId.toString(),
-                    "reason" to (effectsDisableReason ?: "effects_disabled_for_process")
+                    "reason" to (effectsDisableReason ?: "effects_disabled_for_process"),
+                    "source" to source
                 )
             }
             return
@@ -188,7 +185,7 @@ class EqualizerManager @Inject constructor() {
                 type = AdvancedPerformanceDiagnostics.EventTypes.AUDIO_EFFECT,
                 name = "equalizer_attach_skipped"
             ) {
-                mapOf("reason" to "invalid_audio_session")
+                mapOf("reason" to "invalid_audio_session","source" to source)
             }
             return
         }
@@ -201,7 +198,8 @@ class EqualizerManager @Inject constructor() {
             ) {
                 mapOf(
                     "audioSessionId" to audioSessionId.toString(),
-                    "reason" to "already_attached"
+                    "reason" to "already_attached",
+                    "source" to source
                 )
             }
             return
@@ -239,7 +237,8 @@ class EqualizerManager @Inject constructor() {
                 ) {
                     mapOf(
                         "audioSessionId" to audioSessionId.toString(),
-                        "error" to (effectsDisableReason ?: e.javaClass.simpleName)
+                        "error" to (effectsDisableReason ?: e.javaClass.simpleName),
+                        "source" to source
                     )
                 }
                 release()
@@ -348,7 +347,8 @@ class EqualizerManager @Inject constructor() {
                     "eqBands" to (equalizer?.numberOfBands?.toString() ?: "unknown"),
                     "bassBoostAvailable" to (bassBoost != null).toString(),
                     "virtualizerAvailable" to (virtualizer != null).toString(),
-                    "loudnessAvailable" to (loudnessEnhancer != null).toString()
+                    "loudnessAvailable" to (loudnessEnhancer != null).toString(),
+                    "source" to source
                 )
             }
             
@@ -361,14 +361,15 @@ class EqualizerManager @Inject constructor() {
                 mapOf(
                     "audioSessionId" to audioSessionId.toString(),
                     "durationMs" to (SystemClock.elapsedRealtime() - attachStartedMs).toString(),
-                    "error" to (e.message ?: e.javaClass.simpleName)
+                    "error" to (e.message ?: e.javaClass.simpleName),
+                    "source" to source
                 )
             }
             release()
         }
     }
 
-    suspend fun attachToAudioSessionIfNeeded(audioSessionId: Int) {
+    suspend fun attachToAudioSessionIfNeeded(audioSessionId: Int, source: String = "unknown") {
         if (!hasAnyEnabledEffects) {
             Timber.tag(TAG).d(
                 "Skipping attachToAudioSession($audioSessionId): all audio effects are disabled"
@@ -377,7 +378,7 @@ class EqualizerManager @Inject constructor() {
             return
         }
 
-        attachToAudioSession(audioSessionId)
+        attachToAudioSession(audioSessionId, source)
     }
     
     /**
