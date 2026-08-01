@@ -9,6 +9,8 @@ import com.theveloper.pixelplay.data.diagnostics.AdvancedPerformanceDiagnostics
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -36,6 +38,15 @@ class EqualizerManager @Inject constructor() {
     private var bassBoost: BassBoost? = null
     private var virtualizer: Virtualizer? = null
     private var currentAudioSessionId: Int = 0
+    // Serializes attachToAudioSessionInternal calls. Nominally "runs on the main
+    // thread", but the retry loops inside contain delay() calls, which are
+    // suspension points — a second call queued on the same dispatcher can still
+    // interleave mid-attach, before currentAudioSessionId/equalizer are updated,
+    // and race past the "already attached" guard below. Observed in practice as
+    // repeated attach_start/attach_success pairs for the identical session ID,
+    // seconds apart, each one tearing down and recreating the real OS effect —
+    // which is audible as dropped/glitchy sound while adjusting the equalizer.
+    private val attachMutex = Mutex()
 
     val isAttached: Boolean
         get() = equalizer != null && currentAudioSessionId != 0
@@ -141,7 +152,7 @@ class EqualizerManager @Inject constructor() {
         }
     }
 
-    private suspend fun attachToAudioSessionInternal(audioSessionId: Int) {
+    private suspend fun attachToAudioSessionInternal(audioSessionId: Int) = attachMutex.withLock {
         val attachStartedMs = if (AdvancedPerformanceDiagnostics.isEnabled) {
             SystemClock.elapsedRealtime()
         } else {
