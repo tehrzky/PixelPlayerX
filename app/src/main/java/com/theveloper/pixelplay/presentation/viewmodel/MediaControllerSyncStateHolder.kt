@@ -272,7 +272,16 @@ class MediaControllerSyncStateHolder @Inject constructor(
         metadataProbeJob?.cancel()
         metadataProbeJob = null
         metadataProbeMediaId = null
-        _playbackAudioMetadata.value = PlaybackAudioMetadata(mediaId = mediaId)
+        // A "transition" can fire for the same track that's already playing (e.g. a
+        // queue reorder from shuffle) without the audio format actually changing —
+        // onTracksChanged won't necessarily refire to repopulate it. Keep what we
+        // already know instead of wiping it in that case.
+        val current = _playbackAudioMetadata.value
+        _playbackAudioMetadata.value = if (current.mediaId == mediaId) {
+            current
+        } else {
+            PlaybackAudioMetadata(mediaId = mediaId)
+        }
     }
 
     private fun extractBitDepthFromPcmEncoding(pcmEncoding: Int): Int? {
