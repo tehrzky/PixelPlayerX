@@ -1455,7 +1455,9 @@ class MusicService : MediaLibraryService() {
             }
             // Pre-fetch RG for the current track so the cache is warm
             mediaItem?.let { replayGainProcessor.prefetch(it) }
-            replayGainProcessor.apply(mediaSession?.player?.currentMediaItem)
+            // Use the parameter directly. mediaSession?.player?.currentMediaItem can
+            // lag behind or return a rebuilt MediaItem missing filePath extras.
+            replayGainProcessor.apply(mediaItem)
             // Pre-fetch RG for the track after this one so it's cached when needed
             val player = engine.masterPlayer
             val nextIndex = player.nextMediaItemIndex
