@@ -986,6 +986,7 @@ class PlaybackStateHolder @Inject constructor(
                         // For large queues, use bulk replace (1 IPC call) instead of
                         // per-item moveMediaItem (n IPC calls) which freezes the UI.
                         if (currentSongs.size > BULK_REPLACE_THRESHOLD) {
+                            Timber.tag(TAG).d("Queue size (%d) exceeds threshold (%d); attempting bulk segment replacement.", currentSongs.size, BULK_REPLACE_THRESHOLD)
                             val preservedReplacement = buildQueueSegments(
                                 newQueue = shuffledQueue,
                                 currentIndex = currentIndex,
@@ -995,7 +996,10 @@ class PlaybackStateHolder @Inject constructor(
                                 replacePlayerQueuePreservingCurrent(currentIndex, preparedSegments)
                             } == true
 
-                            if (!replacedInPlace) {
+                            if (replacedInPlace) {
+                                Timber.tag(TAG).d("Shuffle applied via Tier 2: Preserved active item segment replacement.")
+                            } else {
+                                Timber.tag(TAG).w("Tier 2 failed. Falling back to Tier 3: Full queue replacement.")
                                 val preparedQueue = buildQueueReplacement(
                                     newQueue = shuffledQueue,
                                     targetIndex = currentIndex,
@@ -1004,8 +1008,12 @@ class PlaybackStateHolder @Inject constructor(
                                 replacePlayerQueue(player, preparedQueue, currentPosition)
                             }
                         } else {
+                            Timber.tag(TAG).d("Queue size (%d) within threshold; attempting in-place reorder.", currentSongs.size)
                             val reordered = reorderQueueInPlace(player, shuffledQueue)
-                            if (!reordered) {
+                            if (reordered) {
+                                Timber.tag(TAG).d("Shuffle applied via Tier 1: In-place media item moves.")
+                            } else {
+                                Timber.tag(TAG).w("Tier 1 in-place reorder failed; falling back to Tier 2 segment replacement.")
                                 val preservedReplacement = buildQueueSegments(
                                     newQueue = shuffledQueue,
                                     currentIndex = currentIndex,
@@ -1015,7 +1023,10 @@ class PlaybackStateHolder @Inject constructor(
                                     replacePlayerQueuePreservingCurrent(currentIndex, preparedSegments)
                                 } == true
 
-                                if (!replacedInPlace) {
+                                if (replacedInPlace) {
+                                    Timber.tag(TAG).d("Shuffle applied via Tier 2: Preserved active item segment replacement.")
+                                } else {
+                                    Timber.tag(TAG).w("Tier 2 failed. Falling back to Tier 3: Full queue replacement.")
                                     val preparedQueue = buildQueueReplacement(
                                         newQueue = shuffledQueue,
                                         targetIndex = currentIndex,
