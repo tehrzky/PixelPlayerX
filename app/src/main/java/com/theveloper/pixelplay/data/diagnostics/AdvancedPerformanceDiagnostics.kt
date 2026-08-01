@@ -20,6 +20,7 @@ object AdvancedPerformanceDiagnostics {
         const val PLAYBACK = "playback"
         const val AUDIO_EFFECT = "audio_effect"
         const val REPLAYGAIN = "replaygain"
+        const val QUEUE = "queue"
         const val OFFLOAD = "offload"
         const val WORKER = "worker"
         const val ARTWORK = "artwork"
