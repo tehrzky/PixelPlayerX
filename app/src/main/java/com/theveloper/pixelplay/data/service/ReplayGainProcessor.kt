@@ -152,6 +152,15 @@ class ReplayGainProcessor(
             // Already reading RG for this exact track; don't restart the slow IO.
             return
         }
+        // If we already have a computed RG volume for this exact track,
+        // just reapply it and don't restart IO. This prevents file-lock
+        // races when Media3 fires redundant callbacks on the same song.
+        if (mediaId == lastMediaId && lastAppliedVolume != null) {
+            if (!engine.isTransitionRunning()) {
+                setPlayerVolume(engine.masterPlayer, lastAppliedVolume!!)
+            }
+            return
+        }
         pendingMediaId = mediaId
         val filePath = mediaItem.mediaMetadata.extras
             ?.getString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH)
