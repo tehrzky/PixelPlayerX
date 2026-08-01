@@ -1354,11 +1354,17 @@ class DualPlayerEngine @Inject constructor(
                 auxiliaryPlayer.clearMediaItems()
             } catch (e: Exception) { /* Ignore */ }
         }
-        if (::playerA.isInitialized) {
+        if (::playerA.isInitialized && shouldPublishMasterPlayer) {
+            // Only reset volume when we're actually aborting an in-progress fade —
+            // playerA's volume may genuinely be mid-ramp in that case. If no
+            // transition was running, playerA's volume already reflects whatever
+            // ReplayGain (or the user) set it to; resetting it here unconditionally
+            // stomps on ReplayGain every time cancelNext() runs for an unrelated
+            // reason — which is most of the time (every track transition after the
+            // scheduler's debounce, every queue reorder, every repeat/shuffle
+            // toggle), not just genuine crossfade aborts.
             playerA.volume = 1f
-            if (shouldPublishMasterPlayer) {
-                onPlayerSwappedListeners.forEach { it(playerA) }
-            }
+            onPlayerSwappedListeners.forEach { it(playerA) }
         }
         incomingTrackReplayGainVolume = null
         setPauseAtEndOfMediaItems(false)
