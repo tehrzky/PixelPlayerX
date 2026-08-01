@@ -739,7 +739,7 @@ class MusicService : MediaLibraryService() {
                         // every other edited song was already cleared, so it just reads fresh on
                         // its next natural transition.
                         if (!editedPath.isNullOrBlank() && editedPath == currentPath) {
-                            replayGainProcessor.apply(currentItem)
+                            replayGainProcessor.forceRefresh(currentItem)
                         }
                     }
                 }
