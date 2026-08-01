@@ -483,14 +483,14 @@ class MusicService : MediaLibraryService() {
 
             val sessionId = engine.getAudioSessionId()
             if (sessionId != 0) {
-                equalizerManager.attachToAudioSessionIfNeeded(sessionId)
+                equalizerManager.attachToAudioSessionIfNeeded(sessionId, source = "service_restore")
             }
 
             
             // Re-attach equalizer whenever the active audio session changes (e.g. crossfade)
             engine.activeAudioSessionId.collect { newSessionId ->
                 if (newSessionId != 0) {
-                    equalizerManager.attachToAudioSessionIfNeeded(newSessionId)
+                    equalizerManager.attachToAudioSessionIfNeeded(newSessionId, source = "session_changed")
                 }
             }
         }
