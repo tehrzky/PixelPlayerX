@@ -302,9 +302,9 @@ fun EqualizerScreen(
         ) {
             // Preset Tabs
             item(key = "preset_tabs") {
-                val visiblePresets = remember(uiState.accessiblePresets) {
+                val visiblePresets = remember(uiState.accessiblePresets, uiState.customBands) {
                     val defaultPresets = uiState.accessiblePresets.filter { !it.isCustom }
-                    defaultPresets + EqualizerPreset.custom(List(10) { 0 }) // Always show "Custom" tab at end
+                    defaultPresets + EqualizerPreset.custom(uiState.customBands) // Always show "Custom" tab at end
                 }
                 
                 PresetTabsRow(
