@@ -35,6 +35,10 @@ class EqualizerPreferencesRepository @Inject constructor(
         val VIRTUALIZER_DISMISSED = booleanPreferencesKey("virtualizer_dismissed")
         val LOUDNESS_DISMISSED = booleanPreferencesKey("loudness_dismissed")
         val VIEW_MODE = stringPreferencesKey("equalizer_view_mode")
+        val REVERB_ENABLED = booleanPreferencesKey("reverb_enabled")
+        val REVERB_STRENGTH = intPreferencesKey("reverb_strength")
+        val REVERB_DECAY = intPreferencesKey("reverb_decay")
+        val REVERB_DISMISSED = booleanPreferencesKey("reverb_dismissed")
         val CUSTOM_PRESETS = stringPreferencesKey("custom_presets_json")
         val PINNED_PRESETS = stringPreferencesKey("pinned_presets_json")
     }
@@ -113,6 +117,22 @@ class EqualizerPreferencesRepository @Inject constructor(
 
     val loudnessDismissedFlow: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[Keys.LOUDNESS_DISMISSED] ?: false
+    }
+
+    val reverbEnabledFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[Keys.REVERB_ENABLED] ?: false
+    }
+
+    val reverbStrengthFlow: Flow<Int> = dataStore.data.map { preferences ->
+        (preferences[Keys.REVERB_STRENGTH] ?: 0).coerceIn(0, 1000)
+    }
+
+    val reverbDecayFlow: Flow<Int> = dataStore.data.map { preferences ->
+        (preferences[Keys.REVERB_DECAY] ?: 500).coerceIn(0, 1000)
+    }
+
+    val reverbDismissedFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[Keys.REVERB_DISMISSED] ?: false
     }
 
     val customPresetsFlow: Flow<List<EqualizerPreset>> = dataStore.data.map { preferences ->
@@ -209,6 +229,26 @@ class EqualizerPreferencesRepository @Inject constructor(
     suspend fun setLoudnessDismissed(dismissed: Boolean) =
         dataStore.edit { preferences ->
             preferences[Keys.LOUDNESS_DISMISSED] = dismissed
+        }
+
+    suspend fun setReverbEnabled(enabled: Boolean) =
+        dataStore.edit { preferences ->
+            preferences[Keys.REVERB_ENABLED] = enabled
+        }
+
+    suspend fun setReverbStrength(strength: Int) =
+        dataStore.edit { preferences ->
+            preferences[Keys.REVERB_STRENGTH] = strength.coerceIn(0, 1000)
+        }
+
+    suspend fun setReverbDecay(decay: Int) =
+        dataStore.edit { preferences ->
+            preferences[Keys.REVERB_DECAY] = decay.coerceIn(0, 1000)
+        }
+
+    suspend fun setReverbDismissed(dismissed: Boolean) =
+        dataStore.edit { preferences ->
+            preferences[Keys.REVERB_DISMISSED] = dismissed
         }
 
     suspend fun setPinnedPresets(presetNames: List<String>) =
