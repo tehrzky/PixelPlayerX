@@ -482,12 +482,16 @@ class MusicService : MediaLibraryService() {
             val virtualizerStrength = equalizerPreferencesRepository.virtualizerStrengthFlow.first()
             val loudnessEnabled = equalizerPreferencesRepository.loudnessEnhancerEnabledFlow.first()
             val loudnessStrength = equalizerPreferencesRepository.loudnessEnhancerStrengthFlow.first()
+            val reverbEnabled = equalizerPreferencesRepository.reverbEnabledFlow.first()
+            val reverbStrength = equalizerPreferencesRepository.reverbStrengthFlow.first()
+            val reverbDecay = equalizerPreferencesRepository.reverbDecayFlow.first()
 
             equalizerManager.restoreState(
                 eqEnabled, presetName, customBands,
                 bassBoostEnabled, bassBoostStrength,
                 virtualizerEnabled, virtualizerStrength,
-                loudnessEnabled, loudnessStrength
+                loudnessEnabled, loudnessStrength,
+                reverbEnabled, reverbStrength, reverbDecay
             )
 
             val sessionId = engine.getAudioSessionId()
