@@ -228,7 +228,9 @@ fun FullPlayerContent(
     onShowCastClicked: () -> Unit,
     onShuffleToggle: () -> Unit,
     onRepeatToggle: () -> Unit,
-    onFavoriteToggle: () -> Unit
+    onFavoriteToggle: () -> Unit,
+    onShowEqualizerClicked: () -> Unit = {},
+    onShowAudioFxClicked: () -> Unit = {}
 ) {
     var retainedSong by remember { mutableStateOf(currentSong) }
     LaunchedEffect(currentSong?.id) {
@@ -889,6 +891,45 @@ fun FullPlayerContent(
                                 Icon(
                                     painter = painterResource(R.drawable.rounded_queue_music_24),
                                     contentDescription = stringResource(R.string.player_cd_open_queue),
+                                    tint = playerAccentColor
+                                )
+                            }
+
+                            // Equalizer Button
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(playerOnAccentColor.copy(alpha = 0.7f))
+                                    .clickable { onShowEqualizerClicked() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = androidx.compose.material.icons.Icons.Rounded.GraphicEq,
+                                    contentDescription = stringResource(R.string.player_cd_open_equalizer),
+                                    tint = playerAccentColor
+                                )
+                            }
+
+                            // Audio FX Button
+                            Box(
+                                modifier = Modifier
+                                    .size(height = 42.dp, width = 50.dp)
+                                    .clip(
+                                        RoundedCornerShape(
+                                            topStart = 50.dp,
+                                            topEnd = 6.dp,
+                                            bottomStart = 50.dp,
+                                            bottomEnd = 6.dp
+                                        )
+                                    )
+                                    .background(playerOnAccentColor.copy(alpha = 0.7f))
+                                    .clickable { onShowAudioFxClicked() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = androidx.compose.material.icons.Icons.Rounded.Tune,
+                                    contentDescription = stringResource(R.string.player_cd_open_audio_fx),
                                     tint = playerAccentColor
                                 )
                             }
