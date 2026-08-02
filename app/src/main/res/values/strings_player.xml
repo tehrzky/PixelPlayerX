@@ -8,7 +8,9 @@
     <string name="player_cd_bluetooth">Bluetooth</string>
     <string name="player_cd_local_playback">Local playback</string>
     <string name="player_connecting">Connecting…</string>
-    <string name="player_cd_open_queue">Open Queue</string>    
+    <string name="player_cd_open_queue">Open Queue</string>
+    <string name="player_cd_open_equalizer">Open Equalizer</string>
+    <string name="player_cd_open_audio_fx">Open Audio FX</string>   
 
     <!-- CastBottomSheet -->
     <string name="cast_perm_title">Get ready to connect</string>
