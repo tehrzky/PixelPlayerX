@@ -147,7 +147,7 @@ class EqualizerPreferencesRepository @Inject constructor(
         preferences[Keys.REVERB_DISMISSED] ?: false
     }
 
-        val radioEnabledFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+    val radioEnabledFlow: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[Keys.RADIO_ENABLED] ?: false
     }
 
@@ -311,7 +311,7 @@ class EqualizerPreferencesRepository @Inject constructor(
             preferences[Keys.REVERB_DISMISSED] = dismissed
         }
 
-            suspend fun setRadioEnabled(enabled: Boolean) =
+    suspend fun setRadioEnabled(enabled: Boolean) =
         dataStore.edit { preferences ->
             preferences[Keys.RADIO_ENABLED] = enabled
         }
