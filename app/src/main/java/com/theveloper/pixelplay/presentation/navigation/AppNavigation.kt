@@ -459,6 +459,15 @@ fun AppNavigation(
                 }
             }
             composable(
+                Screen.AudioFx.route,
+            ) {
+                ScreenWrapper(navController = navController, playerViewModel = playerViewModel, animatedVisibilityScope = this) {
+                    com.theveloper.pixelplay.presentation.screens.AudioFxScreen(
+                        navController = navController
+                    )
+                }
+            }
+            composable(
                 Screen.DeviceCapabilities.route,
             ) {
                 ScreenWrapper(navController = navController, playerViewModel = playerViewModel, animatedVisibilityScope = this) {
