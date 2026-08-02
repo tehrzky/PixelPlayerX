@@ -55,7 +55,8 @@ class EqualizerManager @Inject constructor() {
         get() = _isEnabled.value ||
             _bassBoostEnabled.value ||
             _virtualizerEnabled.value ||
-            _loudnessEnhancerEnabled.value
+            _loudnessEnhancerEnabled.value ||
+            _reverbEnabled.value
     
     // Normalized band levels (-15 to +15 for UI)
     private val _bandLevels = MutableStateFlow(List(NUM_BANDS) { 0 })
@@ -85,11 +86,22 @@ class EqualizerManager @Inject constructor() {
     private val _loudnessEnhancerStrength = MutableStateFlow(0)
     val loudnessEnhancerStrength: StateFlow<Int> = _loudnessEnhancerStrength.asStateFlow()
     
+    private val _reverbEnabled = MutableStateFlow(false)
+    val reverbEnabled: StateFlow<Boolean> = _reverbEnabled.asStateFlow()
+
+    private val _reverbStrength = MutableStateFlow(0)
+    val reverbStrength: StateFlow<Int> = _reverbStrength.asStateFlow()
+
+    private val _reverbDecay = MutableStateFlow(500)
+    val reverbDecay: StateFlow<Int> = _reverbDecay.asStateFlow()
+    
     // Actual millibel range from the device's equalizer
     private var minEqLevel: Short = -1500
     private var maxEqLevel: Short = 1500
 
     private var loudnessEnhancer: android.media.audiofx.LoudnessEnhancer? = null
+
+    private var environmentalReverb: android.media.audiofx.EnvironmentalReverb? = null
 
     // Global device capabilities (Checking existence of effect UUIDs)
     private var isBassBoostSupportedGlobal = false
@@ -308,6 +320,25 @@ class EqualizerManager @Inject constructor() {
                 markVirtualizerUnavailable("No effect engine was created for audio session $audioSessionId after $maxRetries attempts")
             }
 
+                    // Initialize Environmental Reverb
+        environmentalReverb = try {
+            android.media.audiofx.EnvironmentalReverb(0, audioSessionId).apply {
+                applyReverbSettings(_reverbStrength.value, _reverbDecay.value)
+                enabled = _reverbEnabled.value
+            }
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "EnvironmentalReverb not supported on this device")
+            AdvancedPerformanceDiagnostics.recordEventIfEnabled(
+                type = AdvancedPerformanceDiagnostics.EventTypes.AUDIO_EFFECT,
+                name = "reverb_init_failed"
+            ) {
+                mapOf(
+                    "audioSessionId" to audioSessionId.toString(),
+                    "error" to (e.message ?: e.javaClass.simpleName)
+                )
+            }
+            null
+        }
             // Initialize Loudness Enhancer (usually robust, but let's be safe)
             loudnessEnhancer = try {
                 android.media.audiofx.LoudnessEnhancer(audioSessionId).apply {
@@ -348,6 +379,7 @@ class EqualizerManager @Inject constructor() {
                     "bassBoostAvailable" to (bassBoost != null).toString(),
                     "virtualizerAvailable" to (virtualizer != null).toString(),
                     "loudnessAvailable" to (loudnessEnhancer != null).toString(),
+                    "reverbAvailable" to (environmentalReverb != null).toString(),
                     "source" to source
                 )
             }
@@ -515,6 +547,63 @@ class EqualizerManager @Inject constructor() {
         releaseIfUnused()
     }
 
+        /**
+     * Sets reverb enabled state.
+     */
+    fun setReverbEnabled(enabled: Boolean) {
+        _reverbEnabled.value = enabled
+        try {
+            environmentalReverb?.enabled = enabled
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to set reverb enabled")
+        }
+        releaseIfUnused()
+    }
+
+    /**
+     * Sets reverb strength (0-1000).
+     * Maps to roomLevel and reverbLevel (-9000 mB to 0 mB).
+     */
+    fun setReverbStrength(strength: Int) {
+        val clamped = strength.coerceIn(0, 1000)
+        _reverbStrength.value = clamped
+        environmentalReverb?.applyReverbSettings(clamped, _reverbDecay.value)
+    }
+
+    /**
+     * Sets reverb decay time (0-1000).
+     * Maps to decayTime (100 ms to 5000 ms).
+     */
+    fun setReverbDecay(decay: Int) {
+        val clamped = decay.coerceIn(0, 1000)
+        _reverbDecay.value = clamped
+        environmentalReverb?.applyReverbSettings(_reverbStrength.value, clamped)
+    }
+
+    private fun android.media.audiofx.EnvironmentalReverb.applyReverbSettings(strength: Int, decay: Int) {
+        try {
+            // Strength 0-1000 → roomLevel / reverbLevel -9000 to 0 mB
+            val levelMb = ((strength / 1000f) * 9000).toInt() - 9000
+            roomLevel = levelMb.toShort()
+            reverbLevel = levelMb.toShort()
+
+            // Decay 0-1000 → decayTime 100 ms to 5000 ms
+            val decayMs = 100 + ((decay / 1000f) * 4900).toInt()
+            decayTime = decayMs
+
+            // Sensible defaults for the remaining parameters
+            roomHFLevel = -1000
+            decayHFRatio = 500
+            reflectionsLevel = -1000
+            reflectionsDelay = 0
+            reverbDelay = 0
+            diffusion = 1000
+            density = 1000
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to apply reverb settings")
+        }
+    }
+
     /**
      * Sets loudness enhancer strength (gain in mB).
      * 0 to 1000mB (10dB) is used as a stable cross-device range.
@@ -543,7 +632,10 @@ class EqualizerManager @Inject constructor() {
         virtualizerEnabled: Boolean,
         virtualizerStrength: Int,
         loudnessEnabled: Boolean,
-        loudnessStrength: Int
+        loudnessStrength: Int,
+        reverbEnabled: Boolean = false,
+        reverbStrength: Int = 0,
+        reverbDecay: Int = 500
     ) {
         _isEnabled.value = enabled
         _bassBoostEnabled.value = bassBoostEnabled
@@ -552,6 +644,9 @@ class EqualizerManager @Inject constructor() {
         _virtualizerStrength.value = virtualizerStrength
         _loudnessEnhancerEnabled.value = loudnessEnabled
         _loudnessEnhancerStrength.value = loudnessStrength.coerceIn(0, MAX_LOUDNESS_GAIN_MB)
+        _reverbEnabled.value = reverbEnabled
+        _reverbStrength.value = reverbStrength.coerceIn(0, 1000)
+        _reverbDecay.value = reverbDecay.coerceIn(0, 1000)
         
         val preset = if (presetName == "custom") {
             EqualizerPreset.custom(customBands)
@@ -565,6 +660,10 @@ class EqualizerManager @Inject constructor() {
         // Apply if already attached
         if (equalizer != null) {
             if (!hasAnyEnabledEffects) {
+                environmentalReverb?.apply {
+                    applyReverbSettings(_reverbStrength.value, _reverbDecay.value)
+                    enabled = _reverbEnabled.value
+                }
                 releaseIfUnused()
                 return
             }
@@ -592,7 +691,16 @@ class EqualizerManager @Inject constructor() {
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Failed applying bass boost state")
         }
-
+        
+        try {
+            environmentalReverb?.apply {
+                applyReverbSettings(_reverbStrength.value, _reverbDecay.value)
+                enabled = _reverbEnabled.value
+            }
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed applying reverb state")
+        }
+        
         try {
             virtualizer?.apply {
                 enabled = _virtualizerEnabled.value
@@ -714,6 +822,7 @@ class EqualizerManager @Inject constructor() {
             bassBoost?.release()
             virtualizer?.release()
             loudnessEnhancer?.release()
+            environmentalReverb?.release()
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Error releasing audio effects")
         }
@@ -721,6 +830,7 @@ class EqualizerManager @Inject constructor() {
         bassBoost = null
         virtualizer = null
         loudnessEnhancer = null
+        environmentalReverb = null
         currentAudioSessionId = 0
         Timber.tag(TAG).d("Audio effects released")
     }
