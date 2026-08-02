@@ -662,7 +662,7 @@ class EqualizerManager @Inject constructor() {
             if (!hasAnyEnabledEffects) {
                 environmentalReverb?.apply {
                     applyReverbSettings(_reverbStrength.value, _reverbDecay.value)
-                    enabled = _reverbEnabled.value
+                    this.setEnabled(_reverbEnabled.value)
                 }
                 releaseIfUnused()
                 return
