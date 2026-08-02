@@ -772,7 +772,9 @@ fun UnifiedPlayerSheetV2(
                             onQueueDragStart = sheetActionHandlers.beginQueueDrag,
                             onQueueDrag = sheetActionHandlers.dragQueueBy,
                             onQueueRelease = sheetActionHandlers.endQueueDrag,
-                            onShowCastClicked = castSheetState.openCastSheet
+                            onShowCastClicked = castSheetState.openCastSheet,
+                            onShowEqualizerClicked = sheetActionHandlers.onNavigateToEqualizer,
+                            onShowAudioFxClicked = sheetActionHandlers.onNavigateToAudioFx
                         )
                     }
                 }
