@@ -332,6 +332,15 @@ class MusicService : MediaLibraryService() {
             "Published incoming crossfade player to MediaSession."
         )
         replayGainProcessor.prepareForTransition(displayPlayer)
+        // Pre-attach equalizer to the incoming session before it's audible — reacting
+        // only after the swap left a ~100-140ms gap with no effect chain, audible as a
+        // brief mute on MediaTek hardware.
+        val incomingSessionId = displayPlayer.audioSessionId
+        if (incomingSessionId != 0) {
+            serviceScope.launch {
+                equalizerManager.attachToAudioSessionIfNeeded(incomingSessionId, source = "pre_transition")
+            }
+        }
     }
 
     private val transitionFinishedListener: () -> Unit = {
