@@ -68,7 +68,7 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
     private var phaserAllPassState: Array<FloatArray> = Array(4) { FloatArray(2) { 0f } }
     private var phaserLfoPhase = 0f
 
-    // --- Chorus (modulated delay) ---
+    // --- Chorus ---
     private var chorusDelayLineL = FloatArray(0)
     private var chorusDelayLineR = FloatArray(0)
     private var chorusWriteIndexL = 0
@@ -83,9 +83,6 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
     private var allPassIndices = IntArray(2) { 0 }
     private var allPassDelayLengths = IntArray(2) { 0 }
 
-    // -----------------------------------------------------------------
-    // Public API
-    // -----------------------------------------------------------------
     fun setParameters(
         enabled: Boolean,
         noiseLevel: Float,
@@ -114,9 +111,6 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
         pendingBathroomReverbAmount = bathroomReverbAmount.coerceIn(0f, 1f)
     }
 
-    // -----------------------------------------------------------------
-    // AudioProcessor implementation
-    // -----------------------------------------------------------------
     override fun configure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT &&
             inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT
@@ -142,7 +136,6 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
             return
         }
 
-        // Commit pending parameters at buffer boundary (no tearing)
         enabled = pendingEnabled
         noiseLevel = pendingNoiseLevel
         distortionAmount = pendingDistortionAmount
@@ -176,15 +169,12 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
         val samples = FloatArray(channelCount)
 
         for (frame in 0 until frameCount) {
-            // Read frame
             for (ch in 0 until channelCount) {
                 samples[ch] = if (isFloatMode) inputBuffer.float else inputBuffer.short / 32768f
             }
 
-            // Process each channel
             for (ch in 0 until channelCount) {
                 var s = samples[ch]
-
                 if (radioBand) s = applyBandpass(s, ch)
                 s = applyDistortion(s)
                 s = applyNoise(s)
@@ -192,14 +182,11 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
                 if (tapeWowEnabled) s = applyTapeWow(s, ch)
                 if (phaserEnabled) s = applyPhaserChorus(s, ch)
                 if (bathroomReverbEnabled) s = applyBathroomReverb(s, ch)
-
                 samples[ch] = s
             }
 
-            // Advance LFOs once per audio clock tick
             advanceLfos()
 
-            // Write frame
             for (ch in 0 until channelCount) {
                 val clamped = samples[ch].coerceIn(-1f, 1f)
                 if (isFloatMode) {
@@ -264,9 +251,6 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
         outputAudioFormat = AudioProcessor.AudioFormat.NOT_SET
     }
 
-    // -----------------------------------------------------------------
-    // Delay-line init
-    // -----------------------------------------------------------------
     private fun initDelayLines(sampleRate: Int) {
         val maxTapeDelayMs = 50f
         val maxTapeSamples = (sampleRate * maxTapeDelayMs / 1000f).toInt() + 100
@@ -296,9 +280,6 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
         }
     }
 
-    // -----------------------------------------------------------------
-    // LFO advance
-    // -----------------------------------------------------------------
     private fun advanceLfos() {
         val twopi = 2f * PI.toFloat()
         tapeLfoPhase += twopi * (0.5f + tapeWowDepth * 4.5f) / sampleRateF
@@ -311,9 +292,6 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
         if (chorusLfoPhase > twopi) chorusLfoPhase -= twopi
     }
 
-    // -----------------------------------------------------------------
-    // Radio kernels
-    // -----------------------------------------------------------------
     private fun applyBandpass(sample: Float, channel: Int): Float {
         val hpOut = sample - hpState[channel]
         hpState[channel] = sample * 0.04f + hpState[channel] * 0.96f
@@ -349,9 +327,6 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
         return sample
     }
 
-    // -----------------------------------------------------------------
-    // Tape wow / flutter (modulated delay line)
-    // -----------------------------------------------------------------
     private fun applyTapeWow(sample: Float, channel: Int): Float {
         val delayLine = if (channel == 0) tapeDelayLineL else tapeDelayLineR
         val writeIndex = if (channel == 0) tapeWriteIndexL else tapeWriteIndexR
@@ -379,11 +354,7 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
         return output
     }
 
-    // -----------------------------------------------------------------
-    // Phaser + Chorus
-    // -----------------------------------------------------------------
     private fun applyPhaserChorus(sample: Float, channel: Int): Float {
-        // Phaser: 4 all-pass stages
         var phaserOut = sample
         val minFreq = 200f
         val maxFreq = 4000f
@@ -400,7 +371,6 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
             phaserOut = allPassOut
         }
 
-        // Chorus: 10-20 ms modulated delay
         val delayLine = if (channel == 0) chorusDelayLineL else chorusDelayLineR
         val writeIndex = if (channel == 0) chorusWriteIndexL else chorusWriteIndexR
         delayLine[writeIndex] = sample
@@ -420,9 +390,6 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
         return sample * (1f - mix) + phaserOut * mix * 0.6f + chorusOut * mix * 0.4f
     }
 
-    // -----------------------------------------------------------------
-    // Bathroom reverb (Schroeder: 4 combs + 2 all-passes)
-    // -----------------------------------------------------------------
     private fun applyBathroomReverb(sample: Float, channel: Int): Float {
         var combOut = 0f
         val feedback = 0.3f + bathroomReverbAmount * 0.5f
