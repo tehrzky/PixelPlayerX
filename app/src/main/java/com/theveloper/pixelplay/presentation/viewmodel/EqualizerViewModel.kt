@@ -259,6 +259,18 @@ class EqualizerViewModel @Inject constructor(
         viewModelScope.launch {
             equalizerManager.attachToAudioSessionIfNeeded(dualPlayerEngine.getAudioSessionId(), source = "toggle_enabled")
             equalizerPreferencesRepository.setEqualizerEnabled(enabled)
+            if (enabled) {
+                // MediaTek's audio HAL can silently fail to properly engage a newly
+                // attached effect chain on an already-playing session (same bug family
+                // as the offload-stall issue) — a quick pause/resume forces a resync.
+                // This is what manually pausing and playing again already fixes;
+                // doing it automatically here means the user doesn't have to.
+                val player = dualPlayerEngine.masterPlayer
+                if (player.isPlaying) {
+                    player.pause()
+                    player.play()
+                }
+            }
         }
     }
 
