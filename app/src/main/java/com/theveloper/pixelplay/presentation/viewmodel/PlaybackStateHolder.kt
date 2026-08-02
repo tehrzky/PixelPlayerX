@@ -30,6 +30,7 @@ import com.theveloper.pixelplay.data.model.Song
 import com.theveloper.pixelplay.data.service.cast.CastRemotePlaybackState
 import com.google.android.gms.cast.MediaStatus
 import timber.log.Timber
+import com.theveloper.pixelplay.data.diagnostics.AdvancedPerformanceDiagnostics
 import com.theveloper.pixelplay.utils.QueueUtils
 import com.theveloper.pixelplay.utils.MediaItemBuilder
 import kotlin.math.abs
@@ -1008,17 +1009,11 @@ class PlaybackStateHolder @Inject constructor(
                                 replacePlayerQueue(player, preparedQueue, currentPosition)
                             }
                         } else {
-                            Timber.tag(TAG).d("Queue size (%d) within threshold; attempting in-place reorder.", currentSongs.size)
-                            val reordered = reorderQueueInPlace(player, shuffledQueue)
-                            if (reordered) {
-                                Timber.tag(TAG).d("Shuffle applied via Tier 1: In-place media item moves.")
-                            } else {
-                            // Try the same safe "never touch the current item" path used
-                            // for large queues first — reorderQueueInPlace's per-item
-                            // moveMediaItem loop can transiently shift the currently
-                            // playing item's index while placing other songs around it,
-                            // firing spurious PLAYLIST_CHANGED transitions (visible as a
-                            // brief wrong-album-art blip even when audio itself is fine).
+                            // Try the safe "never touch the current item" path first —
+                            // reorderQueueInPlace's per-item moveMediaItem loop can
+                            // transiently shift the currently playing item's index while
+                            // placing other songs around it, firing spurious
+                            // PLAYLIST_CHANGED transitions (the wrong-album-art blip).
                             val preservedReplacement = buildQueueSegments(
                                 newQueue = shuffledQueue,
                                 currentIndex = currentIndex,
@@ -1028,7 +1023,10 @@ class PlaybackStateHolder @Inject constructor(
                                 replacePlayerQueuePreservingCurrent(currentIndex, preparedSegments)
                             } == true
 
-                            if (!replacedInPlace) {
+                            if (replacedInPlace) {
+                                Timber.tag(TAG).d("Shuffle applied via safe segment replacement.")
+                            } else {
+                                Timber.tag(TAG).w("Safe path failed, falling back to in-place reorder.")
                                 val reordered = reorderQueueInPlace(player, shuffledQueue)
                                 if (!reordered) {
                                     AdvancedPerformanceDiagnostics.recordEventIfEnabled(
