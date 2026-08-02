@@ -709,14 +709,10 @@ class EqualizerManager @Inject constructor() {
      * Releases all audio effect resources.
      */
     fun release() {
-        try {
-            equalizer?.release()
-            bassBoost?.release()
-            virtualizer?.release()
-            loudnessEnhancer?.release()
-        } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Error releasing audio effects")
-        }
+        try { equalizer?.release() } catch (e: Exception) { Timber.tag(TAG).e(e, "Error releasing equalizer") }
+        try { bassBoost?.release() } catch (e: Exception) { Timber.tag(TAG).e(e, "Error releasing bassBoost") }
+        try { virtualizer?.release() } catch (e: Exception) { Timber.tag(TAG).e(e, "Error releasing virtualizer") }
+        try { loudnessEnhancer?.release() } catch (e: Exception) { Timber.tag(TAG).e(e, "Error releasing loudnessEnhancer") }
         equalizer = null
         bassBoost = null
         virtualizer = null
