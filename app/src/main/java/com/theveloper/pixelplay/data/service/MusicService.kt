@@ -168,6 +168,8 @@ class MusicService : MediaLibraryService() {
     @Inject
     lateinit var listeningStatsTracker: ListeningStatsTracker
     @Inject
+    lateinit var radioEffectProcessor: RadioEffectAudioProcessor
+    @Inject
     @AppScope
     lateinit var appScope: CoroutineScope
 
@@ -494,10 +496,47 @@ class MusicService : MediaLibraryService() {
                 reverbEnabled, reverbStrength, reverbDecay
             )
 
+            // Restore radio effect
+            val radioEnabled = equalizerPreferencesRepository.radioEnabledFlow.first()
+            val radioNoise = equalizerPreferencesRepository.radioNoiseFlow.first()
+            val radioDistortion = equalizerPreferencesRepository.radioDistortionFlow.first()
+            val radioBandpass = equalizerPreferencesRepository.radioBandpassFlow.first()
+            val radioCrackle = equalizerPreferencesRepository.radioCrackleFlow.first()
+            val radioTapeWowEnabled = equalizerPreferencesRepository.radioTapeWowEnabledFlow.first()
+            val radioTapeWowDepth = equalizerPreferencesRepository.radioTapeWowDepthFlow.first()
+            val radioPhaserEnabled = equalizerPreferencesRepository.radioPhaserEnabledFlow.first()
+            val radioPhaserDepth = equalizerPreferencesRepository.radioPhaserDepthFlow.first()
+            val radioPhaserRate = equalizerPreferencesRepository.radioPhaserRateFlow.first()
+            val radioBathroomReverbEnabled = equalizerPreferencesRepository.radioBathroomReverbEnabledFlow.first()
+            val radioBathroomReverbAmount = equalizerPreferencesRepository.radioBathroomReverbAmountFlow.first()
+
+            radioEffectProcessor.setParameters(
+                enabled = radioEnabled,
+                noiseLevel = radioNoise / 1000f,
+                distortionAmount = radioDistortion / 1000f,
+                radioBand = radioBandpass,
+                crackleEnabled = radioCrackle,
+                tapeWowEnabled = radioTapeWowEnabled,
+                tapeWowDepth = radioTapeWowDepth / 1000f,
+                phaserEnabled = radioPhaserEnabled,
+                phaserDepth = radioPhaserDepth / 1000f,
+                phaserRate = radioPhaserRate / 1000f,
+                bathroomReverbEnabled = radioBathroomReverbEnabled,
+                bathroomReverbAmount = radioBathroomReverbAmount / 1000f
+            )
+
             val sessionId = engine.getAudioSessionId()
             if (sessionId != 0) {
                 equalizerManager.attachToAudioSessionIfNeeded(sessionId, source = "service_restore")
             }
+
+            // Re-attach equalizer whenever the active audio session changes (e.g. crossfade)
+            engine.activeAudioSessionId.collect { newSessionId ->
+                if (newSessionId != 0) {
+                    equalizerManager.attachToAudioSessionIfNeeded(newSessionId, source = "session_changed")
+                }
+            }
+        }
 
             
             // Re-attach equalizer whenever the active audio session changes (e.g. crossfade)
