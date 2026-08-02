@@ -1013,20 +1013,35 @@ class PlaybackStateHolder @Inject constructor(
                             if (reordered) {
                                 Timber.tag(TAG).d("Shuffle applied via Tier 1: In-place media item moves.")
                             } else {
-                                Timber.tag(TAG).w("Tier 1 in-place reorder failed; falling back to Tier 2 segment replacement.")
-                                val preservedReplacement = buildQueueSegments(
-                                    newQueue = shuffledQueue,
-                                    currentIndex = currentIndex,
-                                    currentMediaItem = currentMediaItem
-                                )
-                                val replacedInPlace = preservedReplacement?.let { preparedSegments ->
-                                    replacePlayerQueuePreservingCurrent(currentIndex, preparedSegments)
-                                } == true
+                            // Try the same safe "never touch the current item" path used
+                            // for large queues first — reorderQueueInPlace's per-item
+                            // moveMediaItem loop can transiently shift the currently
+                            // playing item's index while placing other songs around it,
+                            // firing spurious PLAYLIST_CHANGED transitions (visible as a
+                            // brief wrong-album-art blip even when audio itself is fine).
+                            val preservedReplacement = buildQueueSegments(
+                                newQueue = shuffledQueue,
+                                currentIndex = currentIndex,
+                                currentMediaItem = currentMediaItem
+                            )
+                            val replacedInPlace = preservedReplacement?.let { preparedSegments ->
+                                replacePlayerQueuePreservingCurrent(currentIndex, preparedSegments)
+                            } == true
 
-                                if (replacedInPlace) {
-                                    Timber.tag(TAG).d("Shuffle applied via Tier 2: Preserved active item segment replacement.")
-                                } else {
-                                    Timber.tag(TAG).w("Tier 2 failed. Falling back to Tier 3: Full queue replacement.")
+                            if (!replacedInPlace) {
+                                val reordered = reorderQueueInPlace(player, shuffledQueue)
+                                if (!reordered) {
+                                    AdvancedPerformanceDiagnostics.recordEventIfEnabled(
+                                        type = AdvancedPerformanceDiagnostics.EventTypes.QUEUE,
+                                        name = "shuffle_fallback_disruptive"
+                                    ) {
+                                        mapOf(
+                                            "reason" to if (preservedReplacement == null) "segments_null" else "preserve_current_failed",
+                                            "currentIndex" to currentIndex.toString(),
+                                            "queueSize" to currentSongs.size.toString(),
+                                            "path" to "small_after_reorder_failed"
+                                        )
+                                    }
                                     val preparedQueue = buildQueueReplacement(
                                         newQueue = shuffledQueue,
                                         targetIndex = currentIndex,
