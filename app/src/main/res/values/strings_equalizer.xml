@@ -54,4 +54,22 @@
     <string name="equalizer_cd_reset_presets_default">Reset to default</string>
     <string name="equalizer_cd_visible">Visible</string>
     <string name="equalizer_cd_hidden">Hidden</string>
+
+    <string name="equalizer_audio_effects_title">Audio Effects</string>
+    <string name="equalizer_reverb">Reverb</string>
+    <string name="equalizer_reverb_strength">Strength</string>
+    <string name="equalizer_reverb_decay">Decay Time</string>
+    <string name="equalizer_radio_effect">Radio Effect</string>
+    <string name="equalizer_radio_vintage">Vintage Radio</string>
+    <string name="equalizer_radio_bandpass">AM Bandpass</string>
+    <string name="equalizer_radio_crackle">Crackle</string>
+    <string name="equalizer_radio_noise">Noise</string>
+    <string name="equalizer_radio_distortion">Distortion</string>
+    <string name="equalizer_radio_tape_wow">Tape Wow</string>
+    <string name="equalizer_radio_phaser">Phaser / Chorus</string>
+    <string name="equalizer_radio_bathroom_reverb">Bathroom Reverb</string>
+    <string name="equalizer_radio_depth">Depth</string>
+    <string name="equalizer_radio_rate">Rate</string>
+    <string name="equalizer_radio_amount">Amount</string>
+    
 </resources>
