@@ -1,21 +1,27 @@
 package com.theveloper.pixelplay.presentation.screens
 
 import android.annotation.SuppressLint
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDp
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +31,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
@@ -32,14 +39,33 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ShowChart
+import androidx.compose.material.icons.automirrored.rounded.ViewQuilt
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.rounded.BarChart
+import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.SurroundSound
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -53,19 +79,24 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Text
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.TabPosition
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -76,81 +107,57 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
 import com.theveloper.pixelplay.R
 import com.theveloper.pixelplay.data.equalizer.EqualizerPreset
+import com.theveloper.pixelplay.data.preferences.EqualizerViewMode
 import com.theveloper.pixelplay.presentation.components.CollapsibleCommonTopBar
-import com.theveloper.pixelplay.presentation.components.ExpressiveTopBarContent
-import com.theveloper.pixelplay.presentation.viewmodel.EqualizerViewModel
-import com.theveloper.pixelplay.presentation.viewmodel.PlayerViewModel
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material.icons.rounded.VolumeUp
-import androidx.compose.material.icons.rounded.GraphicEq
-import androidx.compose.material.icons.rounded.Speed
-import androidx.compose.material.icons.rounded.SurroundSound
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.material.icons.rounded.Check
-import androidx.media3.common.util.UnstableApi
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import com.theveloper.pixelplay.presentation.components.MiniPlayerHeight
-import androidx.compose.material.icons.rounded.BarChart
-import androidx.compose.material.icons.rounded.Block
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.ShowChart
-import androidx.compose.material.icons.rounded.Radio
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.toArgb
-import com.theveloper.pixelplay.presentation.components.WavyArcSlider
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.TextButton
-import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.ExpandMore
-import androidx.compose.material.icons.rounded.Save
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.Surface
 import com.theveloper.pixelplay.presentation.components.CustomPresetsSheet
+import com.theveloper.pixelplay.presentation.components.ExpressiveTopBarContent
+import com.theveloper.pixelplay.presentation.components.MiniPlayerHeight
+import com.theveloper.pixelplay.presentation.components.RenamePresetDialog
 import com.theveloper.pixelplay.presentation.components.ReorderPresetsSheet
 import com.theveloper.pixelplay.presentation.components.SavePresetDialog
-import com.theveloper.pixelplay.presentation.components.RenamePresetDialog
-import com.theveloper.pixelplay.data.preferences.EqualizerViewMode
-import androidx.compose.material.icons.rounded.ViewQuilt
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.material.icons.automirrored.rounded.ShowChart
-import androidx.compose.material.icons.automirrored.rounded.ViewQuilt
-import androidx.compose.material.icons.automirrored.rounded.VolumeUp
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.stringResource
+import com.theveloper.pixelplay.presentation.components.TabAnimation
+import com.theveloper.pixelplay.presentation.components.WavyArcSlider
+import com.theveloper.pixelplay.presentation.viewmodel.EqualizerViewModel
+import com.theveloper.pixelplay.presentation.viewmodel.PlayerViewModel
+import com.theveloper.pixelplay.utils.shapes.RoundedStarShape
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -505,7 +512,7 @@ private fun PresetTabsRow(
         indicator = {
             if (showTabIndicator) {
                  TabRowDefaults.PrimaryIndicator(
-                    modifier = Modifier.tabIndicatorOffset(selectedTabIndex = selectedIndex),
+                    modifier = Modifier.tabIndicatorOffset(selectedIndex),
                     height = 3.dp,
                     width = 20.dp,
                     shape = RoundedCornerShape(3.dp),
@@ -979,8 +986,8 @@ private fun CustomVerticalSlider(
     activeTrackColor: Color,
     inactiveTrackColor: Color,
     thumbColor: Color,
-    trackThickness: androidx.compose.ui.unit.Dp = androidx.compose.ui.unit.Dp.Unspecified,
-    thumbSize: androidx.compose.ui.unit.Dp = 24.dp,
+    trackThickness: Dp = Dp.Unspecified,
+    thumbSize: Dp = 24.dp,
     thumbShape: androidx.compose.ui.graphics.Shape? = null
 ) {
     val density = LocalDensity.current
@@ -1004,19 +1011,19 @@ private fun CustomVerticalSlider(
         }
     }
     
-    val starShape = remember { com.theveloper.pixelplay.utils.shapes.RoundedStarShape(sides = 8, curve = 0.1) }
+    val starShape = remember { RoundedStarShape(sides = 8, curve = 0.1) }
     val finalShape = thumbShape ?: starShape
     
     val thumbPath = remember(thumbSizePx, finalShape) {
         val outline = finalShape.createOutline(
             androidx.compose.ui.geometry.Size(thumbSizePx, thumbSizePx),
-            androidx.compose.ui.unit.LayoutDirection.Ltr,
+            LayoutDirection.Ltr,
             density
         )
         when (outline) {
-            is androidx.compose.ui.graphics.Outline.Generic -> outline.path
-            is androidx.compose.ui.graphics.Outline.Rounded -> Path().apply { addRoundRect(outline.roundRect) }
-            is androidx.compose.ui.graphics.Outline.Rectangle -> Path().apply { addRect(outline.rect) }
+            is Outline.Generic -> outline.path
+            is Outline.Rounded -> Path().apply { addRoundRect(outline.roundRect) }
+            is Outline.Rectangle -> Path().apply { addRect(outline.rect) }
         }
     }
 
@@ -1089,12 +1096,12 @@ private fun CustomVerticalSlider(
         ) {
             val centerX = size.width / 2
             
-            val trackWidth = if (trackThickness != androidx.compose.ui.unit.Dp.Unspecified) {
+            val trackWidth = if (trackThickness != Dp.Unspecified) {
                 with(density) { trackThickness.toPx() }
             } else {
                 size.width
             }
-            val trackLeft = if (trackThickness != androidx.compose.ui.unit.Dp.Unspecified) {
+            val trackLeft = if (trackThickness != Dp.Unspecified) {
                 centerX - (trackWidth / 2)
             } else {
                 0f
@@ -1102,7 +1109,7 @@ private fun CustomVerticalSlider(
             
             drawRoundRect(
                 color = actualInactiveTrackColor,
-                topLeft = androidx.compose.ui.geometry.Offset(trackLeft, 0f), 
+                topLeft = Offset(trackLeft, 0f), 
                 size = androidx.compose.ui.geometry.Size(trackWidth, size.height),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(trackWidth / 2)
             )
@@ -1110,18 +1117,18 @@ private fun CustomVerticalSlider(
             drawCircle(
                 color = actualActiveTrackColor,
                 radius = trackWidth / 2,
-                center = androidx.compose.ui.geometry.Offset(centerX, thumbCenterY)
+                center = Offset(centerX, thumbCenterY)
             )
             
             val activeRectTop = thumbCenterY
             val activeRectHeight = size.height - activeRectTop
             
             if (activeRectHeight > 0f) {
-                val activeTrackPath = androidx.compose.ui.graphics.Path().apply {
+                val activeTrackPath = Path().apply {
                     addRoundRect(
-                        androidx.compose.ui.geometry.RoundRect(
+                        RoundRect(
                             rect = androidx.compose.ui.geometry.Rect(
-                                offset = androidx.compose.ui.geometry.Offset(trackLeft, activeRectTop),
+                                offset = Offset(trackLeft, activeRectTop),
                                 size = androidx.compose.ui.geometry.Size(trackWidth, activeRectHeight)
                             ),
                             topLeft = androidx.compose.ui.geometry.CornerRadius.Zero,
@@ -1143,7 +1150,7 @@ private fun CustomVerticalSlider(
             ) {
                 rotate(
                     degrees = displayNormalizedValue * 360f,
-                    pivot = androidx.compose.ui.geometry.Offset(thumbRadiusPx, thumbRadiusPx)
+                    pivot = Offset(thumbRadiusPx, thumbRadiusPx)
                 ) {
                     drawPath(
                         path = thumbPath,
@@ -1718,7 +1725,7 @@ private fun EffectControlsSection(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .height(androidx.compose.foundation.layout.IntrinsicSize.Max)
+            .height(IntrinsicSize.Max)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -1887,7 +1894,7 @@ private fun UnsupportedEffectCard(
                     text = stringResource(R.string.equalizer_effect_not_supported),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = TextAlign.Center
                 )
             }
         }
@@ -1985,7 +1992,7 @@ private fun IndividualEffectRow(
                 thumbContent = if (isEnabled) {
                     {
                         Icon(
-                            imageVector = androidx.compose.material.icons.Icons.Rounded.Check,
+                            imageVector = Icons.Rounded.Check,
                             contentDescription = null,
                             modifier = Modifier.size(SwitchDefaults.IconSize),
                         )
@@ -2167,7 +2174,7 @@ private fun HybridBandSliders(
                 indicator = {
                     if (showBandPageTabIndicator) {
                          TabRowDefaults.PrimaryIndicator(
-                            modifier = Modifier.tabIndicatorOffset(selectedTabIndex = selectedTabIndex),
+                            modifier = Modifier.tabIndicatorOffset(selectedTabIndex),
                             height = 3.dp,
                             width = 20.dp,
                             shape = RoundedCornerShape(3.dp),
@@ -2262,7 +2269,7 @@ private fun HybridHorizontalSlider(
         }
 
         Box(modifier = Modifier.weight(1f)) {
-            androidx.compose.material3.Slider(
+            Slider(
                 value = level.toFloat(),
                 onValueChange = { 
                     val intVal = it.roundToInt()
@@ -2324,7 +2331,7 @@ private fun HybridFrequencyResponseGraph(
                 end = Offset(size.width, y),
                 strokeWidth = 1.dp.toPx(),
                 cap = StrokeCap.Round,
-                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
             )
         }
         
