@@ -8,6 +8,7 @@ import com.theveloper.pixelplay.data.preferences.EqualizerPreferencesRepository
 import com.theveloper.pixelplay.data.preferences.EqualizerViewMode
 import com.theveloper.pixelplay.data.preferences.UserPreferencesRepository
 import com.theveloper.pixelplay.data.service.player.DualPlayerEngine
+import com.theveloper.pixelplay.data.equalizer.RadioEffectAudioProcessor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -49,6 +50,27 @@ data class EqualizerUiState(
     val customPresets: List<EqualizerPreset> = emptyList(),
     val pinnedPresetsNames: List<String> = emptyList(),
     val customBands: List<Int> = List(10) { 0 },
+
+    // Reverb
+    val reverbEnabled: Boolean = false,
+    val reverbStrength: Float = 0f,
+    val reverbDecay: Float = 500f,
+    val isReverbSupported: Boolean = true,
+    val isReverbDismissed: Boolean = false,
+
+    // Radio Effect
+    val radioEffectEnabled: Boolean = false,
+    val radioNoise: Float = 150f,
+    val radioDistortion: Float = 250f,
+    val radioBandpass: Boolean = true,
+    val radioCrackle: Boolean = true,
+    val radioTapeWowEnabled: Boolean = false,
+    val radioTapeWowDepth: Float = 300f,
+    val radioPhaserEnabled: Boolean = false,
+    val radioPhaserDepth: Float = 500f,
+    val radioPhaserRate: Float = 300f,
+    val radioBathroomReverbEnabled: Boolean = false,
+    val radioBathroomReverbAmount: Float = 300f
 ) {
     val accessiblePresets: List<EqualizerPreset>
         get() {
@@ -67,6 +89,7 @@ class EqualizerViewModel @Inject constructor(
     private val equalizerManager: EqualizerManager,
     private val equalizerPreferencesRepository: EqualizerPreferencesRepository,
     private val dualPlayerEngine: DualPlayerEngine,
+    private val radioEffectProcessor: RadioEffectAudioProcessor,
     @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
     
@@ -88,6 +111,8 @@ class EqualizerViewModel @Inject constructor(
     private var persistBassBoostJob: Job? = null
     private var persistVirtualizerJob: Job? = null
     private var persistLoudnessJob: Job? = null
+    private var persistReverbJob: Job? = null
+    private var persistRadioJob: Job? = null
     
     init {
         initializeEqualizer()
@@ -151,8 +176,12 @@ class EqualizerViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(
                 isBassBoostSupported = equalizerManager.isBassBoostSupported(),
                 isVirtualizerSupported = equalizerManager.isVirtualizerSupported(),
-                isLoudnessEnhancerSupported = equalizerManager.isLoudnessEnhancerSupported()
+                isLoudnessEnhancerSupported = equalizerManager.isLoudnessEnhancerSupported(),
+                isReverbSupported = true
             )
+
+            applyReverbState()
+            applyRadioProcessorState()
 
             dualPlayerEngine.activeAudioSessionId.collect { sessionId ->
                 if (sessionId != 0) {
@@ -160,7 +189,8 @@ class EqualizerViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         isBassBoostSupported = equalizerManager.isBassBoostSupported(),
                         isVirtualizerSupported = equalizerManager.isVirtualizerSupported(),
-                        isLoudnessEnhancerSupported = equalizerManager.isLoudnessEnhancerSupported()
+                        isLoudnessEnhancerSupported = equalizerManager.isLoudnessEnhancerSupported(),
+                        isReverbSupported = true
                     )
                 }
             }
@@ -170,44 +200,76 @@ class EqualizerViewModel @Inject constructor(
     private fun observeEqualizerState() {
         viewModelScope.launch {
             combine(
-                equalizerPreferencesRepository.equalizerEnabledFlow,
-                equalizerPreferencesRepository.equalizerPresetFlow,
-                equalizerPreferencesRepository.equalizerCustomBandsFlow,
-                equalizerPreferencesRepository.bassBoostEnabledFlow,
-                equalizerPreferencesRepository.bassBoostStrengthFlow,
-                equalizerPreferencesRepository.virtualizerEnabledFlow,
-                equalizerPreferencesRepository.virtualizerStrengthFlow,
-                equalizerPreferencesRepository.loudnessEnhancerEnabledFlow,
-                equalizerPreferencesRepository.loudnessEnhancerStrengthFlow,
-                equalizerPreferencesRepository.bassBoostDismissedFlow,
-                equalizerPreferencesRepository.virtualizerDismissedFlow,
-                equalizerPreferencesRepository.loudnessDismissedFlow,
-                equalizerPreferencesRepository.equalizerViewModeFlow,
-                equalizerPreferencesRepository.customPresetsFlow,
-                equalizerPreferencesRepository.pinnedPresetsFlow
+                equalizerPreferencesRepository.equalizerEnabledFlow,            // 0
+                equalizerPreferencesRepository.equalizerPresetFlow,             // 1
+                equalizerPreferencesRepository.equalizerCustomBandsFlow,        // 2
+                equalizerPreferencesRepository.bassBoostEnabledFlow,            // 3
+                equalizerPreferencesRepository.bassBoostStrengthFlow,           // 4
+                equalizerPreferencesRepository.virtualizerEnabledFlow,          // 5
+                equalizerPreferencesRepository.virtualizerStrengthFlow,          // 6
+                equalizerPreferencesRepository.loudnessEnhancerEnabledFlow,    // 7
+                equalizerPreferencesRepository.loudnessEnhancerStrengthFlow,   // 8
+                equalizerPreferencesRepository.reverbEnabledFlow,               // 9
+                equalizerPreferencesRepository.reverbStrengthFlow,              // 10
+                equalizerPreferencesRepository.reverbDecayFlow,                 // 11
+                equalizerPreferencesRepository.radioEnabledFlow,                // 12
+                equalizerPreferencesRepository.radioNoiseFlow,                  // 13
+                equalizerPreferencesRepository.radioDistortionFlow,             // 14
+                equalizerPreferencesRepository.radioBandpassFlow,               // 15
+                equalizerPreferencesRepository.radioCrackleFlow,                // 16
+                equalizerPreferencesRepository.radioTapeWowEnabledFlow,        // 17
+                equalizerPreferencesRepository.radioTapeWowDepthFlow,          // 18
+                equalizerPreferencesRepository.radioPhaserEnabledFlow,         // 19
+                equalizerPreferencesRepository.radioPhaserDepthFlow,          // 20
+                equalizerPreferencesRepository.radioPhaserRateFlow,           // 21
+                equalizerPreferencesRepository.radioBathroomReverbEnabledFlow, // 22
+                equalizerPreferencesRepository.radioBathroomReverbAmountFlow,  // 23
+                equalizerPreferencesRepository.bassBoostDismissedFlow,         // 24
+                equalizerPreferencesRepository.virtualizerDismissedFlow,       // 25
+                equalizerPreferencesRepository.loudnessDismissedFlow,          // 26
+                equalizerPreferencesRepository.reverbDismissedFlow,            // 27
+                equalizerPreferencesRepository.equalizerViewModeFlow,          // 28
+                equalizerPreferencesRepository.customPresetsFlow,               // 29
+                equalizerPreferencesRepository.pinnedPresetsFlow                // 30
             ) { values ->
-                 val enabled = values[0] as Boolean
-                 val presetName = values[1] as String
-                 val customBands = (values[2] as? List<*>)
-                     ?.mapNotNull { (it as? Number)?.toInt() }
-                     ?: emptyList()
-                 val bbEnabled = values[3] as Boolean
-                 val bbStrength = values[4] as Int
-                 val vEnabled = values[5] as Boolean
-                 val vStrength = values[6] as Int
-                 val lEnabled = values[7] as Boolean
-                 val lStrength = values[8] as Int
-                 val bbDismissed = values[9] as Boolean
-                 val vDismissed = values[10] as Boolean
-                 val lDismissed = values[11] as Boolean
-                 val viewMode = values[12] as EqualizerViewMode
-                 val customPresets = (values[13] as? List<*>)?.filterIsInstance<EqualizerPreset>() ?: emptyList()
-                 val pinnedPresets = (values[14] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                val enabled = values[0] as Boolean
+                val presetName = values[1] as String
+                val customBands = (values[2] as? List<*>)
+                    ?.mapNotNull { (it as? Number)?.toInt() }
+                    ?: emptyList()
+                val bbEnabled = values[3] as Boolean
+                val bbStrength = values[4] as Int
+                val vEnabled = values[5] as Boolean
+                val vStrength = values[6] as Int
+                val lEnabled = values[7] as Boolean
+                val lStrength = values[8] as Int
+                val rEnabled = values[9] as Boolean
+                val rStrength = values[10] as Int
+                val rDecay = values[11] as Int
+                val radioEnabled = values[12] as Boolean
+                val radioNoise = values[13] as Int
+                val radioDistortion = values[14] as Int
+                val radioBandpass = values[15] as Boolean
+                val radioCrackle = values[16] as Boolean
+                val radioTapeWowEnabled = values[17] as Boolean
+                val radioTapeWowDepth = values[18] as Int
+                val radioPhaserEnabled = values[19] as Boolean
+                val radioPhaserDepth = values[20] as Int
+                val radioPhaserRate = values[21] as Int
+                val radioBathroomReverbEnabled = values[22] as Boolean
+                val radioBathroomReverbAmount = values[23] as Int
+                val bbDismissed = values[24] as Boolean
+                val vDismissed = values[25] as Boolean
+                val lDismissed = values[26] as Boolean
+                val rDismissed = values[27] as Boolean
+                val viewMode = values[28] as EqualizerViewMode
+                val customPresets = (values[29] as? List<*>)?.filterIsInstance<EqualizerPreset>() ?: emptyList()
+                val pinnedPresets = (values[30] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
 
                 val currentPreset = if (presetName == "custom") {
                     EqualizerPreset.custom(customBands)
                 } else {
-                     customPresets.find { it.name == presetName }
+                    customPresets.find { it.name == presetName }
                         ?: EqualizerPreset.fromName(presetName)
                 }
 
@@ -223,18 +285,37 @@ class EqualizerViewModel @Inject constructor(
                     virtualizerStrength = vStrength.toFloat(),
                     loudnessEnhancerEnabled = lEnabled,
                     loudnessEnhancerStrength = lStrength.toFloat(),
+                    reverbEnabled = rEnabled,
+                    reverbStrength = rStrength.toFloat(),
+                    reverbDecay = rDecay.toFloat(),
+                    radioEffectEnabled = radioEnabled,
+                    radioNoise = radioNoise.toFloat(),
+                    radioDistortion = radioDistortion.toFloat(),
+                    radioBandpass = radioBandpass,
+                    radioCrackle = radioCrackle,
+                    radioTapeWowEnabled = radioTapeWowEnabled,
+                    radioTapeWowDepth = radioTapeWowDepth.toFloat(),
+                    radioPhaserEnabled = radioPhaserEnabled,
+                    radioPhaserDepth = radioPhaserDepth.toFloat(),
+                    radioPhaserRate = radioPhaserRate.toFloat(),
+                    radioBathroomReverbEnabled = radioBathroomReverbEnabled,
+                    radioBathroomReverbAmount = radioBathroomReverbAmount.toFloat(),
                     isBassBoostDismissed = bbDismissed,
                     isVirtualizerDismissed = vDismissed,
                     isLoudnessDismissed = lDismissed,
+                    isReverbDismissed = rDismissed,
                     viewMode = viewMode,
                     customPresets = customPresets,
                     pinnedPresetsNames = pinnedPresets,
                     isBassBoostSupported = _uiState.value.isBassBoostSupported,
                     isVirtualizerSupported = _uiState.value.isVirtualizerSupported,
-                    isLoudnessEnhancerSupported = _uiState.value.isLoudnessEnhancerSupported
+                    isLoudnessEnhancerSupported = _uiState.value.isLoudnessEnhancerSupported,
+                    isReverbSupported = _uiState.value.isReverbSupported
                 )
             }.collect { newState ->
                 _uiState.value = newState
+                applyReverbState()
+                applyRadioProcessorState()
             }
         }
     }
@@ -259,12 +340,9 @@ class EqualizerViewModel @Inject constructor(
         viewModelScope.launch {
             equalizerManager.attachToAudioSessionIfNeeded(dualPlayerEngine.getAudioSessionId(), source = "toggle_enabled")
             equalizerPreferencesRepository.setEqualizerEnabled(enabled)
+            applyReverbState()
+            applyRadioProcessorState()
             if (enabled) {
-                // MediaTek's audio HAL can silently fail to properly engage a newly
-                // attached effect chain on an already-playing session (same bug family
-                // as the offload-stall issue) — a quick pause/resume forces a resync.
-                // This is what manually pausing and playing again already fixes;
-                // doing it automatically here means the user doesn't have to.
                 val player = dualPlayerEngine.masterPlayer
                 if (player.isPlaying) {
                     player.pause()
@@ -431,6 +509,192 @@ class EqualizerViewModel @Inject constructor(
         }
     }
 
+    fun setReverbEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(reverbEnabled = enabled) }
+        applyReverbState()
+        viewModelScope.launch {
+            equalizerPreferencesRepository.setReverbEnabled(enabled)
+        }
+    }
+
+    fun setReverbStrength(strength: Float) {
+        val clamped = strength.coerceIn(0f, 1000f)
+        _uiState.update { it.copy(reverbStrength = clamped) }
+        applyReverbState()
+
+        persistReverbJob?.cancel()
+        persistReverbJob = viewModelScope.launch {
+            delay(SLIDER_PERSIST_DEBOUNCE_MS)
+            equalizerPreferencesRepository.setReverbStrength(clamped.toInt())
+        }
+    }
+
+    fun setReverbDecay(decay: Float) {
+        val clamped = decay.coerceIn(100f, 20000f)
+        _uiState.update { it.copy(reverbDecay = clamped) }
+        applyReverbState()
+
+        persistReverbJob?.cancel()
+        persistReverbJob = viewModelScope.launch {
+            delay(SLIDER_PERSIST_DEBOUNCE_MS)
+            equalizerPreferencesRepository.setReverbDecay(clamped.toInt())
+        }
+    }
+
+    private fun applyReverbState() {
+        val state = _uiState.value
+        val isEffectActive = state.isEnabled && state.reverbEnabled
+        if (isEffectActive) {
+            val wetMix = state.reverbStrength / 1000f
+            val decayTimeMs = state.reverbDecay.toInt()
+            dualPlayerEngine.setReverbParameters(true, wetMix, decayTimeMs)
+        } else {
+            dualPlayerEngine.setReverbParameters(false, 0f, 500)
+        }
+    }
+
+    fun setRadioEffectEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(radioEffectEnabled = enabled) }
+        applyRadioProcessorState()
+        viewModelScope.launch {
+            equalizerPreferencesRepository.setRadioEnabled(enabled)
+        }
+    }
+
+    fun setRadioNoise(value: Float) {
+        val clamped = value.coerceIn(0f, 1000f)
+        _uiState.update { it.copy(radioNoise = clamped) }
+        applyRadioProcessorState()
+
+        persistRadioJob?.cancel()
+        persistRadioJob = viewModelScope.launch {
+            delay(SLIDER_PERSIST_DEBOUNCE_MS)
+            equalizerPreferencesRepository.setRadioNoise(clamped.toInt())
+        }
+    }
+
+    fun setRadioDistortion(value: Float) {
+        val clamped = value.coerceIn(0f, 1000f)
+        _uiState.update { it.copy(radioDistortion = clamped) }
+        applyRadioProcessorState()
+
+        persistRadioJob?.cancel()
+        persistRadioJob = viewModelScope.launch {
+            delay(SLIDER_PERSIST_DEBOUNCE_MS)
+            equalizerPreferencesRepository.setRadioDistortion(clamped.toInt())
+        }
+    }
+
+    fun setRadioBandpass(enabled: Boolean) {
+        _uiState.update { it.copy(radioBandpass = enabled) }
+        applyRadioProcessorState()
+        viewModelScope.launch {
+            equalizerPreferencesRepository.setRadioBandpass(enabled)
+        }
+    }
+
+    fun setRadioCrackle(enabled: Boolean) {
+        _uiState.update { it.copy(radioCrackle = enabled) }
+        applyRadioProcessorState()
+        viewModelScope.launch {
+            equalizerPreferencesRepository.setRadioCrackle(enabled)
+        }
+    }
+
+    fun setRadioTapeWowEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(radioTapeWowEnabled = enabled) }
+        applyRadioProcessorState()
+        viewModelScope.launch {
+            equalizerPreferencesRepository.setRadioTapeWowEnabled(enabled)
+        }
+    }
+
+    fun setRadioTapeWowDepth(value: Float) {
+        val clamped = value.coerceIn(0f, 1000f)
+        _uiState.update { it.copy(radioTapeWowDepth = clamped) }
+        applyRadioProcessorState()
+
+        persistRadioJob?.cancel()
+        persistRadioJob = viewModelScope.launch {
+            delay(SLIDER_PERSIST_DEBOUNCE_MS)
+            equalizerPreferencesRepository.setRadioTapeWowDepth(clamped.toInt())
+        }
+    }
+
+    fun setRadioPhaserEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(radioPhaserEnabled = enabled) }
+        applyRadioProcessorState()
+        viewModelScope.launch {
+            equalizerPreferencesRepository.setRadioPhaserEnabled(enabled)
+        }
+    }
+
+    fun setRadioPhaserDepth(value: Float) {
+        val clamped = value.coerceIn(0f, 1000f)
+        _uiState.update { it.copy(radioPhaserDepth = clamped) }
+        applyRadioProcessorState()
+
+        persistRadioJob?.cancel()
+        persistRadioJob = viewModelScope.launch {
+            delay(SLIDER_PERSIST_DEBOUNCE_MS)
+            equalizerPreferencesRepository.setRadioPhaserDepth(clamped.toInt())
+        }
+    }
+
+    fun setRadioPhaserRate(value: Float) {
+        val clamped = value.coerceIn(0f, 1000f)
+        _uiState.update { it.copy(radioPhaserRate = clamped) }
+        applyRadioProcessorState()
+
+        persistRadioJob?.cancel()
+        persistRadioJob = viewModelScope.launch {
+            delay(SLIDER_PERSIST_DEBOUNCE_MS)
+            equalizerPreferencesRepository.setRadioPhaserRate(clamped.toInt())
+        }
+    }
+
+    fun setRadioBathroomReverbEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(radioBathroomReverbEnabled = enabled) }
+        applyRadioProcessorState()
+        viewModelScope.launch {
+            equalizerPreferencesRepository.setRadioBathroomReverbEnabled(enabled)
+        }
+    }
+
+    fun setRadioBathroomReverbAmount(value: Float) {
+        val clamped = value.coerceIn(0f, 1000f)
+        _uiState.update { it.copy(radioBathroomReverbAmount = clamped) }
+        applyRadioProcessorState()
+
+        persistRadioJob?.cancel()
+        persistRadioJob = viewModelScope.launch {
+            delay(SLIDER_PERSIST_DEBOUNCE_MS)
+            equalizerPreferencesRepository.setRadioBathroomReverbAmount(clamped.toInt())
+        }
+    }
+
+    private fun applyRadioProcessorState() {
+        val state = _uiState.value
+        val active = state.isEnabled && state.radioEffectEnabled
+        radioEffectProcessor.setEnabled(active)
+
+        if (active) {
+            radioEffectProcessor.setParameters(
+                noiseLevel = state.radioNoise / 1000f,
+                distortionLevel = state.radioDistortion / 1000f,
+                bandpassFilter = state.radioBandpass,
+                crackleEffect = state.radioCrackle,
+                tapeWowEnabled = state.radioTapeWowEnabled,
+                tapeWowDepth = state.radioTapeWowDepth / 1000f,
+                phaserEnabled = state.radioPhaserEnabled,
+                phaserDepth = state.radioPhaserDepth / 1000f,
+                phaserRate = state.radioPhaserRate / 1000f,
+                bathroomReverbEnabled = state.radioBathroomReverbEnabled,
+                bathroomReverbAmount = state.radioBathroomReverbAmount / 1000f
+            )
+        }
+    }
+
     fun setBassBoostDismissed(dismissed: Boolean) {
         viewModelScope.launch {
             equalizerPreferencesRepository.setBassBoostDismissed(dismissed)
@@ -446,6 +710,12 @@ class EqualizerViewModel @Inject constructor(
     fun setLoudnessDismissed(dismissed: Boolean) {
         viewModelScope.launch {
             equalizerPreferencesRepository.setLoudnessDismissed(dismissed)
+        }
+    }
+
+    fun setReverbDismissed(dismissed: Boolean) {
+        viewModelScope.launch {
+            equalizerPreferencesRepository.setReverbDismissed(dismissed)
         }
     }
     
@@ -495,6 +765,21 @@ class EqualizerViewModel @Inject constructor(
                 equalizerPreferencesRepository.setVirtualizerStrength(latest.virtualizerStrength.toInt().coerceIn(0, 1000))
                 equalizerPreferencesRepository.setLoudnessEnhancerEnabled(latest.loudnessEnhancerEnabled)
                 equalizerPreferencesRepository.setLoudnessEnhancerStrength(latest.loudnessEnhancerStrength.toInt().coerceIn(0, 1000))
+                equalizerPreferencesRepository.setReverbEnabled(latest.reverbEnabled)
+                equalizerPreferencesRepository.setReverbStrength(latest.reverbStrength.toInt().coerceIn(0, 1000))
+                equalizerPreferencesRepository.setReverbDecay(latest.reverbDecay.toInt().coerceIn(100, 20000))
+                equalizerPreferencesRepository.setRadioEnabled(latest.radioEffectEnabled)
+                equalizerPreferencesRepository.setRadioNoise(latest.radioNoise.toInt().coerceIn(0, 1000))
+                equalizerPreferencesRepository.setRadioDistortion(latest.radioDistortion.toInt().coerceIn(0, 1000))
+                equalizerPreferencesRepository.setRadioBandpass(latest.radioBandpass)
+                equalizerPreferencesRepository.setRadioCrackle(latest.radioCrackle)
+                equalizerPreferencesRepository.setRadioTapeWowEnabled(latest.radioTapeWowEnabled)
+                equalizerPreferencesRepository.setRadioTapeWowDepth(latest.radioTapeWowDepth.toInt().coerceIn(0, 1000))
+                equalizerPreferencesRepository.setRadioPhaserEnabled(latest.radioPhaserEnabled)
+                equalizerPreferencesRepository.setRadioPhaserDepth(latest.radioPhaserDepth.toInt().coerceIn(0, 1000))
+                equalizerPreferencesRepository.setRadioPhaserRate(latest.radioPhaserRate.toInt().coerceIn(0, 1000))
+                equalizerPreferencesRepository.setRadioBathroomReverbEnabled(latest.radioBathroomReverbEnabled)
+                equalizerPreferencesRepository.setRadioBathroomReverbAmount(latest.radioBathroomReverbAmount.toInt().coerceIn(0, 1000))
             }.onFailure { error ->
                 Timber.tag(TAG).w(error, "Failed to flush equalizer state during onCleared")
             }
@@ -506,6 +791,8 @@ class EqualizerViewModel @Inject constructor(
         persistBassBoostJob?.cancel()
         persistVirtualizerJob?.cancel()
         persistLoudnessJob?.cancel()
+        persistReverbJob?.cancel()
+        persistRadioJob?.cancel()
         persistLatestStateAsync()
         super.onCleared()
         Timber.tag(TAG).d("ViewModel cleared")
