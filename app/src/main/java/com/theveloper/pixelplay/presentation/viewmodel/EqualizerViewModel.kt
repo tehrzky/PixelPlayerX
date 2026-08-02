@@ -215,6 +215,7 @@ class EqualizerViewModel @Inject constructor(
                     isEnabled = enabled,
                     currentPreset = currentPreset,
                     bandLevels = if (currentPreset.name == "custom") customBands else currentPreset.bandLevels,
+                    customBands = customBands,
                     editingPresetName = _uiState.value.editingPresetName,
                     bassBoostEnabled = bbEnabled,
                     bassBoostStrength = bbStrength.toFloat(),
@@ -295,6 +296,7 @@ class EqualizerViewModel @Inject constructor(
             current.copy(
                 currentPreset = EqualizerPreset.custom(updatedBands),
                 bandLevels = updatedBands,
+                customBands = updatedBands,
                 editingPresetName = editingName
             )
         }
