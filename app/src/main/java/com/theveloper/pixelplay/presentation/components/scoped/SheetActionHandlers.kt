@@ -25,7 +25,9 @@ internal data class SheetActionHandlers(
     val onLaunchSaveQueueOverlay: (List<Song>, String, (String, Set<String>) -> Unit) -> Unit,
     val onNavigateToAlbum: (Song) -> Unit,
     val onNavigateToArtist: (Song) -> Unit,
-    val onNavigateToGenre: (Song) -> Unit
+    val onNavigateToGenre: (Song) -> Unit,
+    val onNavigateToEqualizer: () -> Unit,
+    val onNavigateToAudioFx: () -> Unit
 )
 
 @OptIn(UnstableApi::class)
@@ -124,6 +126,13 @@ internal fun rememberSheetActionHandlers(
         }
     }
 
+    val onNavigateToEqualizer = remember(navController) {
+        { navController.navigateSafely(Screen.Equalizer.route) }
+    }
+    val onNavigateToAudioFx = remember(navController) {
+        { navController.navigateSafely(Screen.AudioFx.route) }
+    }
+
     return SheetActionHandlers(
         openQueueSheet = openQueueSheet,
         animateQueueSheet = animateQueueSheet,
@@ -134,6 +143,8 @@ internal fun rememberSheetActionHandlers(
         onLaunchSaveQueueOverlay = onLaunchSaveQueueOverlay,
         onNavigateToAlbum = onNavigateToAlbum,
         onNavigateToArtist = onNavigateToArtist,
-        onNavigateToGenre = onNavigateToGenre
+        onNavigateToGenre = onNavigateToGenre,
+        onNavigateToEqualizer = onNavigateToEqualizer,
+        onNavigateToAudioFx = onNavigateToAudioFx
     )
 }
