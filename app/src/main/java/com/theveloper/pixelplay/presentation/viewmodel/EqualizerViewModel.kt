@@ -8,7 +8,7 @@ import com.theveloper.pixelplay.data.preferences.EqualizerPreferencesRepository
 import com.theveloper.pixelplay.data.preferences.EqualizerViewMode
 import com.theveloper.pixelplay.data.preferences.UserPreferencesRepository
 import com.theveloper.pixelplay.data.service.player.DualPlayerEngine
-import com.theveloper.pixelplay.data.equalizer.RadioEffectAudioProcessor
+import com.theveloper.pixelplay.data.service.player.RadioEffectAudioProcessor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
