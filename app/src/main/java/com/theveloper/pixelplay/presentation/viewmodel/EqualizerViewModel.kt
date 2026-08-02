@@ -48,6 +48,7 @@ data class EqualizerUiState(
     val isLoudnessDismissed: Boolean = false,
     val customPresets: List<EqualizerPreset> = emptyList(),
     val pinnedPresetsNames: List<String> = emptyList(),
+    val customBands: List<Int> = List(10) { 0 },
 ) {
     val accessiblePresets: List<EqualizerPreset>
         get() {
