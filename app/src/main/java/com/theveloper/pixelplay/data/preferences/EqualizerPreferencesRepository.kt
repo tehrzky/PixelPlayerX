@@ -40,6 +40,18 @@ class EqualizerPreferencesRepository @Inject constructor(
         val REVERB_DECAY = intPreferencesKey("reverb_decay")
         val REVERB_DISMISSED = booleanPreferencesKey("reverb_dismissed")
         val CUSTOM_PRESETS = stringPreferencesKey("custom_presets_json")
+        val RADIO_ENABLED = booleanPreferencesKey("radio_effect_enabled")
+        val RADIO_NOISE = intPreferencesKey("radio_noise_level")
+        val RADIO_DISTORTION = intPreferencesKey("radio_distortion_amount")
+        val RADIO_BANDPASS = booleanPreferencesKey("radio_bandpass")
+        val RADIO_CRACKLE = booleanPreferencesKey("radio_crackle")
+        val RADIO_TAPE_WOW_ENABLED = booleanPreferencesKey("radio_tape_wow_enabled")
+        val RADIO_TAPE_WOW_DEPTH = intPreferencesKey("radio_tape_wow_depth")
+        val RADIO_PHASER_ENABLED = booleanPreferencesKey("radio_phaser_enabled")
+        val RADIO_PHASER_DEPTH = intPreferencesKey("radio_phaser_depth")
+        val RADIO_PHASER_RATE = intPreferencesKey("radio_phaser_rate")
+        val RADIO_BATHROOM_REVERB_ENABLED = booleanPreferencesKey("radio_bathroom_reverb_enabled")
+        val RADIO_BATHROOM_REVERB_AMOUNT = intPreferencesKey("radio_bathroom_reverb_amount")
         val PINNED_PRESETS = stringPreferencesKey("pinned_presets_json")
     }
 
@@ -133,6 +145,54 @@ class EqualizerPreferencesRepository @Inject constructor(
 
     val reverbDismissedFlow: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[Keys.REVERB_DISMISSED] ?: false
+    }
+
+        val radioEnabledFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[Keys.RADIO_ENABLED] ?: false
+    }
+
+    val radioNoiseFlow: Flow<Int> = dataStore.data.map { preferences ->
+        (preferences[Keys.RADIO_NOISE] ?: 150).coerceIn(0, 1000)
+    }
+
+    val radioDistortionFlow: Flow<Int> = dataStore.data.map { preferences ->
+        (preferences[Keys.RADIO_DISTORTION] ?: 250).coerceIn(0, 1000)
+    }
+
+    val radioBandpassFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[Keys.RADIO_BANDPASS] ?: true
+    }
+
+    val radioCrackleFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[Keys.RADIO_CRACKLE] ?: true
+    }
+
+    val radioTapeWowEnabledFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[Keys.RADIO_TAPE_WOW_ENABLED] ?: false
+    }
+
+    val radioTapeWowDepthFlow: Flow<Int> = dataStore.data.map { preferences ->
+        (preferences[Keys.RADIO_TAPE_WOW_DEPTH] ?: 300).coerceIn(0, 1000)
+    }
+
+    val radioPhaserEnabledFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[Keys.RADIO_PHASER_ENABLED] ?: false
+    }
+
+    val radioPhaserDepthFlow: Flow<Int> = dataStore.data.map { preferences ->
+        (preferences[Keys.RADIO_PHASER_DEPTH] ?: 500).coerceIn(0, 1000)
+    }
+
+    val radioPhaserRateFlow: Flow<Int> = dataStore.data.map { preferences ->
+        (preferences[Keys.RADIO_PHASER_RATE] ?: 300).coerceIn(0, 1000)
+    }
+
+    val radioBathroomReverbEnabledFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[Keys.RADIO_BATHROOM_REVERB_ENABLED] ?: false
+    }
+
+    val radioBathroomReverbAmountFlow: Flow<Int> = dataStore.data.map { preferences ->
+        (preferences[Keys.RADIO_BATHROOM_REVERB_AMOUNT] ?: 300).coerceIn(0, 1000)
     }
 
     val customPresetsFlow: Flow<List<EqualizerPreset>> = dataStore.data.map { preferences ->
@@ -249,6 +309,66 @@ class EqualizerPreferencesRepository @Inject constructor(
     suspend fun setReverbDismissed(dismissed: Boolean) =
         dataStore.edit { preferences ->
             preferences[Keys.REVERB_DISMISSED] = dismissed
+        }
+
+            suspend fun setRadioEnabled(enabled: Boolean) =
+        dataStore.edit { preferences ->
+            preferences[Keys.RADIO_ENABLED] = enabled
+        }
+
+    suspend fun setRadioNoise(noise: Int) =
+        dataStore.edit { preferences ->
+            preferences[Keys.RADIO_NOISE] = noise.coerceIn(0, 1000)
+        }
+
+    suspend fun setRadioDistortion(distortion: Int) =
+        dataStore.edit { preferences ->
+            preferences[Keys.RADIO_DISTORTION] = distortion.coerceIn(0, 1000)
+        }
+
+    suspend fun setRadioBandpass(enabled: Boolean) =
+        dataStore.edit { preferences ->
+            preferences[Keys.RADIO_BANDPASS] = enabled
+        }
+
+    suspend fun setRadioCrackle(enabled: Boolean) =
+        dataStore.edit { preferences ->
+            preferences[Keys.RADIO_CRACKLE] = enabled
+        }
+
+    suspend fun setRadioTapeWowEnabled(enabled: Boolean) =
+        dataStore.edit { preferences ->
+            preferences[Keys.RADIO_TAPE_WOW_ENABLED] = enabled
+        }
+
+    suspend fun setRadioTapeWowDepth(depth: Int) =
+        dataStore.edit { preferences ->
+            preferences[Keys.RADIO_TAPE_WOW_DEPTH] = depth.coerceIn(0, 1000)
+        }
+
+    suspend fun setRadioPhaserEnabled(enabled: Boolean) =
+        dataStore.edit { preferences ->
+            preferences[Keys.RADIO_PHASER_ENABLED] = enabled
+        }
+
+    suspend fun setRadioPhaserDepth(depth: Int) =
+        dataStore.edit { preferences ->
+            preferences[Keys.RADIO_PHASER_DEPTH] = depth.coerceIn(0, 1000)
+        }
+
+    suspend fun setRadioPhaserRate(rate: Int) =
+        dataStore.edit { preferences ->
+            preferences[Keys.RADIO_PHASER_RATE] = rate.coerceIn(0, 1000)
+        }
+
+    suspend fun setRadioBathroomReverbEnabled(enabled: Boolean) =
+        dataStore.edit { preferences ->
+            preferences[Keys.RADIO_BATHROOM_REVERB_ENABLED] = enabled
+        }
+
+    suspend fun setRadioBathroomReverbAmount(amount: Int) =
+        dataStore.edit { preferences ->
+            preferences[Keys.RADIO_BATHROOM_REVERB_AMOUNT] = amount.coerceIn(0, 1000)
         }
 
     suspend fun setPinnedPresets(presetNames: List<String>) =
