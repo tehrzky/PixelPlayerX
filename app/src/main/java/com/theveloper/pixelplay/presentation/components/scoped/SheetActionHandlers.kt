@@ -127,10 +127,16 @@ internal fun rememberSheetActionHandlers(
     }
 
     val onNavigateToEqualizer = remember(navController) {
-        { navController.navigateSafely(Screen.Equalizer.route) }
+        {
+            navController.navigateSafely(Screen.Equalizer.route)
+            Unit
+        }
     }
     val onNavigateToAudioFx = remember(navController) {
-        { navController.navigateSafely(Screen.AudioFx.route) }
+        {
+            navController.navigateSafely(Screen.AudioFx.route)
+            Unit
+        }
     }
 
     return SheetActionHandlers(
