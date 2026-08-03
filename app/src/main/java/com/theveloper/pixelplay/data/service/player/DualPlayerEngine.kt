@@ -1061,7 +1061,10 @@ class DualPlayerEngine @Inject constructor(
                         DefaultAudioSink.DefaultAudioProcessorChain(
                             HiResSampleRateCapAudioProcessor(),
                             SurroundDownmixProcessor(),
-                            LofiAudioProcessor(audioFxStateHolder)
+                            LofiAudioProcessor(audioFxStateHolder),
+                            RadioAudioProcessor(audioFxStateHolder),
+                            WowFlutterAudioProcessor(audioFxStateHolder),
+                            ReverbAudioProcessor(audioFxStateHolder)
                         )
                     )
                     .build()
