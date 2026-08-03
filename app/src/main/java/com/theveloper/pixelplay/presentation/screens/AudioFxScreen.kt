@@ -26,18 +26,26 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.activity.compose.BackHandler
 import androidx.navigation.NavController
 import com.theveloper.pixelplay.R
 import com.theveloper.pixelplay.presentation.components.CollapsibleCommonTopBar
 import com.theveloper.pixelplay.presentation.components.MiniPlayerHeight
 import com.theveloper.pixelplay.presentation.viewmodel.AudioFxViewModel
+import com.theveloper.pixelplay.presentation.viewmodel.PlayerViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AudioFxScreen(
     navController: NavController,
+    playerViewModel: PlayerViewModel = hiltViewModel(),
     audioFxViewModel: AudioFxViewModel = hiltViewModel()
 ) {
+    val onBack: () -> Unit = {
+        playerViewModel.expandPlayerSheet()
+        navController.popBackStack()
+    }
+    BackHandler(onBack = onBack)
     val uiState by audioFxViewModel.uiState.collectAsStateWithLifecycle()
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val topBarHeight = 56.dp + statusBarHeight
@@ -45,7 +53,7 @@ fun AudioFxScreen(
     LazyColumn(
         contentPadding = PaddingValues(
             top = topBarHeight + 8.dp,
-            bottom = MiniPlayerHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 48.dp,
+            bottom = MiniPlayerHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 64.dp,
             start = 16.dp,
             end = 16.dp
         ),
@@ -161,7 +169,7 @@ fun AudioFxScreen(
         title = stringResource(R.string.audio_fx_title),
         collapseFraction = 1f,
         headerHeight = topBarHeight,
-        onBackClick = { navController.popBackStack() },
+        onBackClick = onBack,
         collapsedTitleStartPadding = 72.dp
     )
 }
