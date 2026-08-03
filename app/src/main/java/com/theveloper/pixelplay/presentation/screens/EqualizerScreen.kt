@@ -151,7 +151,6 @@ import com.theveloper.pixelplay.presentation.components.MiniPlayerHeight
 import com.theveloper.pixelplay.presentation.components.RenamePresetDialog
 import com.theveloper.pixelplay.presentation.components.ReorderPresetsSheet
 import com.theveloper.pixelplay.presentation.components.SavePresetDialog
-import com.theveloper.pixelplay.presentation.components.TabAnimation
 import com.theveloper.pixelplay.presentation.components.WavyArcSlider
 import com.theveloper.pixelplay.presentation.viewmodel.EqualizerViewModel
 import com.theveloper.pixelplay.presentation.viewmodel.PlayerViewModel
