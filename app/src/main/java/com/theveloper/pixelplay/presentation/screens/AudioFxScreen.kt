@@ -44,12 +44,12 @@ fun AudioFxScreen(
 ) {
     val uiState by audioFxViewModel.uiState.collectAsStateWithLifecycle()
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val topBarHeight = 64.dp + statusBarHeight
+    val topBarHeight = 56.dp + statusBarHeight
 
     LazyColumn(
         contentPadding = PaddingValues(
             top = topBarHeight + 12.dp,
-            bottom = MiniPlayerHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 20.dp,
+            bottom = MiniPlayerHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 48.dp,
             start = 16.dp,
             end = 16.dp
         ),
@@ -124,11 +124,10 @@ fun AudioFxScreen(
 
     CollapsibleCommonTopBar(
         title = stringResource(R.string.audio_fx_title),
-        collapseFraction = 0f,
+        collapseFraction = 1f,
         headerHeight = topBarHeight,
         onBackClick = { navController.popBackStack() },
-        expandedTitleStartPadding = 20.dp,
-        collapsedTitleStartPadding = 20.dp
+        collapsedTitleStartPadding = 72.dp
     )
 }
 
@@ -156,7 +155,7 @@ private fun AudioFxCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(modifier = Modifier.padding(end = 12.dp)) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                     Text(text = title, style = MaterialTheme.typography.titleMedium)
                     Text(
                         text = subtitle,
@@ -171,7 +170,15 @@ private fun AudioFxCard(
                 onValueChange = { onIntensityChange(it.toInt()) },
                 valueRange = 0f..100f,
                 enabled = enabled,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(24.dp),
+                track = { state ->
+                    androidx.compose.material3.SliderDefaults.Track(
+                        sliderState = state,
+                        modifier = Modifier.height(6.dp)
+                    )
+                }
             )
         }
     }
