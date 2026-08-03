@@ -73,6 +73,12 @@ enum class SettingsCategory(
         subtitleRes = R.string.settings_category_equalizer_subtitle,
         icon = Icons.Rounded.GraphicEq
     ),
+    AUDIO_FX(
+        id = "audio_fx",
+        titleRes = R.string.audio_fx_title,
+        subtitleRes = R.string.settings_category_audio_fx_subtitle,
+        icon = Icons.Rounded.Tune
+    ),
     DEVICE_CAPABILITIES(
         id = "device_capabilities",
         titleRes = R.string.settings_category_device_capabilities_title,
