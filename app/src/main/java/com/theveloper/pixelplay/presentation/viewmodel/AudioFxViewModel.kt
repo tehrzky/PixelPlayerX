@@ -24,7 +24,8 @@ data class AudioFxUiState(
 
 @HiltViewModel
 class AudioFxViewModel @Inject constructor(
-    private val audioFxPreferencesRepository: AudioFxPreferencesRepository
+    private val audioFxPreferencesRepository: AudioFxPreferencesRepository,
+    private val audioFxStateHolder: com.theveloper.pixelplay.data.service.player.AudioFxStateHolder
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AudioFxUiState())
@@ -52,12 +53,25 @@ class AudioFxViewModel @Inject constructor(
                     reverbEnabled = values[6] as Boolean,
                     reverbIntensity = values[7] as Int
                 )
-            }.collect { _uiState.value = it }
+            }.collect { state ->
+                _uiState.value = state
+                // Prime the live audio-thread state from persisted prefs, so a cold
+                // app launch (screen never opened this session) still reflects the
+                // last saved settings once the screen IS opened.
+                audioFxStateHolder.lofiEnabled = state.lofiEnabled
+                audioFxStateHolder.lofiIntensity = state.lofiIntensity
+            }
         }
     }
 
-    fun setLofiEnabled(enabled: Boolean) = viewModelScope.launch { audioFxPreferencesRepository.setLofiEnabled(enabled) }
-    fun setLofiIntensity(value: Int) = viewModelScope.launch { audioFxPreferencesRepository.setLofiIntensity(value) }
+    fun setLofiEnabled(enabled: Boolean) {
+        audioFxStateHolder.lofiEnabled = enabled
+        viewModelScope.launch { audioFxPreferencesRepository.setLofiEnabled(enabled) }
+    }
+    fun setLofiIntensity(value: Int) {
+        audioFxStateHolder.lofiIntensity = value
+        viewModelScope.launch { audioFxPreferencesRepository.setLofiIntensity(value) }
+    }
 
     fun setRadioEnabled(enabled: Boolean) = viewModelScope.launch { audioFxPreferencesRepository.setRadioEnabled(enabled) }
     fun setRadioIntensity(value: Int) = viewModelScope.launch { audioFxPreferencesRepository.setRadioIntensity(value) }
