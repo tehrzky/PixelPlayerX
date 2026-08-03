@@ -224,22 +224,7 @@ class EqualizerViewModel @Inject constructor(
             equalizerPreferencesRepository.equalizerEnabledFlow,
             equalizerPreferencesRepository.equalizerPresetFlow,
             equalizerPreferencesRepository.equalizerCustomBandsFlow,
-            equalizerPreferencesRepository.equalizerViewModeFlow,
-            equalizerPreferencesRepository.customPresetsFlow,
-            equalizerPreferencesRepository.pinnedPresetsFlow
-        ) { arr ->
-            @Suppress("UNCHECKED_CAST")
-            CoreEqSettings(
-                enabled = arr[0] as Boolean,
-                presetName = arr[1] as String,
-                customBands = arr[2] as List<Int>,
-                viewMode = arr[3] as EqualizerViewMode,
-                customPresets = arr[4] as List<EqualizerPreset>,
-                pinnedPresets = arr[5] as List<String>
-            )
-        }
-
-        val effectFlow = combine(
+            equalizerPreferencesRepository.equalizerViewModeFlow,        val effectFlow = combine<Any, EffectSettings>(
             equalizerPreferencesRepository.bassBoostEnabledFlow,
             equalizerPreferencesRepository.bassBoostStrengthFlow,
             equalizerPreferencesRepository.bassBoostDismissedFlow,
@@ -263,7 +248,7 @@ class EqualizerViewModel @Inject constructor(
             )
         }
 
-                val radioFlow = combine(
+        val radioFlow = combine<Any, RadioSettings>(
             equalizerPreferencesRepository.radioEnabledFlow,
             equalizerPreferencesRepository.radioNoiseFlow,
             equalizerPreferencesRepository.radioDistortionFlow,
