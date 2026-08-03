@@ -28,7 +28,8 @@
     <string name="audio_fx_wow_flutter_subtitle">Subtle pitch wobble, like tape or vinyl</string>
     <string name="audio_fx_reverb_title">Reverb</string>
     <string name="audio_fx_reverb_subtitle">Short room reflection for depth</string>
-    <string name="audio_fx_coming_soon">Audio engine wiring coming next — this saves your settings, but won\'t change playback yet</string>
+    <string name="audio_fx_active_note">These effects apply live to playback — toggle one mid-song to hear it instantly</string>
+    <string name="audio_fx_intensity_label">Intensity</string>
     <string name="settings_category_equalizer_subtitle">Adjust audio frequencies and presets</string>
     <string name="settings_category_device_capabilities_title">Device Capabilities</string>
     <string name="settings_category_device_capabilities_subtitle">Audio specs, codecs, and decoder info</string>
