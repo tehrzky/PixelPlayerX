@@ -219,12 +219,27 @@ class EqualizerViewModel @Inject constructor(
         }
     }
 
-    private fun observeEqualizerState() {
+        private fun observeEqualizerState() {
         val coreFlow = combine(
             equalizerPreferencesRepository.equalizerEnabledFlow,
             equalizerPreferencesRepository.equalizerPresetFlow,
             equalizerPreferencesRepository.equalizerCustomBandsFlow,
-            equalizerPreferencesRepository.equalizerViewModeFlow,        val effectFlow = combine<Any, EffectSettings>(
+            equalizerPreferencesRepository.equalizerViewModeFlow,
+            equalizerPreferencesRepository.customPresetsFlow,
+            equalizerPreferencesRepository.pinnedPresetsFlow
+        ) { arr ->
+            @Suppress("UNCHECKED_CAST")
+            CoreEqSettings(
+                enabled = arr[0] as Boolean,
+                presetName = arr[1] as String,
+                customBands = arr[2] as List<Int>,
+                viewMode = arr[3] as EqualizerViewMode,
+                customPresets = arr[4] as List<EqualizerPreset>,
+                pinnedPresets = arr[5] as List<String>
+            )
+        }
+
+        val effectFlow = combine(
             equalizerPreferencesRepository.bassBoostEnabledFlow,
             equalizerPreferencesRepository.bassBoostStrengthFlow,
             equalizerPreferencesRepository.bassBoostDismissedFlow,
@@ -241,14 +256,23 @@ class EqualizerViewModel @Inject constructor(
         ) { arr ->
             @Suppress("UNCHECKED_CAST")
             EffectSettings(
-                bbEnabled = arr[0] as Boolean, bbStrength = arr[1] as Int, bbDismissed = arr[2] as Boolean,
-                vEnabled = arr[3] as Boolean, vStrength = arr[4] as Int, vDismissed = arr[5] as Boolean,
-                lEnabled = arr[6] as Boolean, lStrength = arr[7] as Int, lDismissed = arr[8] as Boolean,
-                rEnabled = arr[9] as Boolean, rStrength = arr[10] as Int, rDecay = arr[11] as Int, rDismissed = arr[12] as Boolean
+                bbEnabled = arr[0] as Boolean,
+                bbStrength = arr[1] as Int,
+                bbDismissed = arr[2] as Boolean,
+                vEnabled = arr[3] as Boolean,
+                vStrength = arr[4] as Int,
+                vDismissed = arr[5] as Boolean,
+                lEnabled = arr[6] as Boolean,
+                lStrength = arr[7] as Int,
+                lDismissed = arr[8] as Boolean,
+                rEnabled = arr[9] as Boolean,
+                rStrength = arr[10] as Int,
+                rDecay = arr[11] as Int,
+                rDismissed = arr[12] as Boolean
             )
         }
 
-        val radioFlow = combine<Any, RadioSettings>(
+        val radioFlow = combine(
             equalizerPreferencesRepository.radioEnabledFlow,
             equalizerPreferencesRepository.radioNoiseFlow,
             equalizerPreferencesRepository.radioDistortionFlow,
@@ -264,11 +288,18 @@ class EqualizerViewModel @Inject constructor(
         ) { arr ->
             @Suppress("UNCHECKED_CAST")
             RadioSettings(
-                enabled = arr[0] as Boolean, noise = arr[1] as Int, distortion = arr[2] as Int,
-                bandpass = arr[3] as Boolean, crackle = arr[4] as Boolean,
-                tapeWowEnabled = arr[5] as Boolean, tapeWowDepth = arr[6] as Int,
-                phaserEnabled = arr[7] as Boolean, phaserDepth = arr[8] as Int, phaserRate = arr[9] as Int,
-                bathroomReverbEnabled = arr[10] as Boolean, bathroomReverbAmount = arr[11] as Int
+                enabled = arr[0] as Boolean,
+                noise = arr[1] as Int,
+                distortion = arr[2] as Int,
+                bandpass = arr[3] as Boolean,
+                crackle = arr[4] as Boolean,
+                tapeWowEnabled = arr[5] as Boolean,
+                tapeWowDepth = arr[6] as Int,
+                phaserEnabled = arr[7] as Boolean,
+                phaserDepth = arr[8] as Int,
+                phaserRate = arr[9] as Int,
+                bathroomReverbEnabled = arr[10] as Boolean,
+                bathroomReverbAmount = arr[11] as Int
             )
         }
 
