@@ -60,6 +60,12 @@ class AudioFxViewModel @Inject constructor(
                 // last saved settings once the screen IS opened.
                 audioFxStateHolder.lofiEnabled = state.lofiEnabled
                 audioFxStateHolder.lofiIntensity = state.lofiIntensity
+                audioFxStateHolder.radioEnabled = state.radioEnabled
+                audioFxStateHolder.radioIntensity = state.radioIntensity
+                audioFxStateHolder.wowFlutterEnabled = state.wowFlutterEnabled
+                audioFxStateHolder.wowFlutterIntensity = state.wowFlutterIntensity
+                audioFxStateHolder.reverbEnabled = state.reverbEnabled
+                audioFxStateHolder.reverbIntensity = state.reverbIntensity
             }
         }
     }
@@ -73,12 +79,30 @@ class AudioFxViewModel @Inject constructor(
         viewModelScope.launch { audioFxPreferencesRepository.setLofiIntensity(value) }
     }
 
-    fun setRadioEnabled(enabled: Boolean) = viewModelScope.launch { audioFxPreferencesRepository.setRadioEnabled(enabled) }
-    fun setRadioIntensity(value: Int) = viewModelScope.launch { audioFxPreferencesRepository.setRadioIntensity(value) }
+    fun setRadioEnabled(enabled: Boolean) {
+        audioFxStateHolder.radioEnabled = enabled
+        viewModelScope.launch { audioFxPreferencesRepository.setRadioEnabled(enabled) }
+    }
+    fun setRadioIntensity(value: Int) {
+        audioFxStateHolder.radioIntensity = value
+        viewModelScope.launch { audioFxPreferencesRepository.setRadioIntensity(value) }
+    }
 
-    fun setWowFlutterEnabled(enabled: Boolean) = viewModelScope.launch { audioFxPreferencesRepository.setWowFlutterEnabled(enabled) }
-    fun setWowFlutterIntensity(value: Int) = viewModelScope.launch { audioFxPreferencesRepository.setWowFlutterIntensity(value) }
+    fun setWowFlutterEnabled(enabled: Boolean) {
+        audioFxStateHolder.wowFlutterEnabled = enabled
+        viewModelScope.launch { audioFxPreferencesRepository.setWowFlutterEnabled(enabled) }
+    }
+    fun setWowFlutterIntensity(value: Int) {
+        audioFxStateHolder.wowFlutterIntensity = value
+        viewModelScope.launch { audioFxPreferencesRepository.setWowFlutterIntensity(value) }
+    }
 
-    fun setReverbEnabled(enabled: Boolean) = viewModelScope.launch { audioFxPreferencesRepository.setReverbEnabled(enabled) }
-    fun setReverbIntensity(value: Int) = viewModelScope.launch { audioFxPreferencesRepository.setReverbIntensity(value) }
+    fun setReverbEnabled(enabled: Boolean) {
+        audioFxStateHolder.reverbEnabled = enabled
+        viewModelScope.launch { audioFxPreferencesRepository.setReverbEnabled(enabled) }
+    }
+    fun setReverbIntensity(value: Int) {
+        audioFxStateHolder.reverbIntensity = value
+        viewModelScope.launch { audioFxPreferencesRepository.setReverbIntensity(value) }
+    }
 }
