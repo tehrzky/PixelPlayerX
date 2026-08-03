@@ -236,10 +236,10 @@ fun SettingsScreen(
                             category = category,
                             customColors = colors,
                             onClick = {
-                                if (category == SettingsCategory.EQUALIZER) {
-                                    navController.navigateSafely(Screen.Equalizer.route)
-                                } else {
-                                    navController.navigateSafely(Screen.SettingsCategory.createRoute(category.id))
+                                when (category) {
+                                    SettingsCategory.EQUALIZER -> navController.navigateSafely(Screen.Equalizer.route)
+                                    SettingsCategory.AUDIO_FX -> navController.navigateSafely(Screen.AudioFx.route)
+                                    else -> navController.navigateSafely(Screen.SettingsCategory.createRoute(category.id))
                                 }
                             },
                             shape = shapeFor(itemIndex)
@@ -487,6 +487,7 @@ private fun getCategoryColors(category: SettingsCategory, isDark: Boolean): Pair
             SettingsCategory.BACKUP_RESTORE -> Color(0xFF3B4869) to Color(0xFFD9E2FF)
             SettingsCategory.DEVELOPER -> Color(0xFF324F34) to Color(0xFFCBEFD0) 
             SettingsCategory.EQUALIZER -> Color(0xFF6E4E13) to Color(0xFFFFDEAC) 
+            SettingsCategory.AUDIO_FX -> Color(0xFF4A4458) to Color(0xFFE9DDFF)
             SettingsCategory.DEVICE_CAPABILITIES -> Color(0xFF004D61) to Color(0xFFACEFEE) // Custom teal/cyan mix
             SettingsCategory.ABOUT -> Color(0xFF3F474D) to Color(0xFFDEE3EB) 
         }
@@ -501,6 +502,7 @@ private fun getCategoryColors(category: SettingsCategory, isDark: Boolean): Pair
             SettingsCategory.BACKUP_RESTORE -> Color(0xFFD9E2FF) to Color(0xFF27304E)
             SettingsCategory.DEVELOPER -> Color(0xFFCBEFD0) to Color(0xFF042106)
             SettingsCategory.EQUALIZER -> Color(0xFFFFDEAC) to Color(0xFF281900)
+            SettingsCategory.AUDIO_FX -> Color(0xFFE9DDFF) to Color(0xFF322A47)
             SettingsCategory.DEVICE_CAPABILITIES -> Color(0xFFACEFEE) to Color(0xFF002022)
             SettingsCategory.ABOUT -> Color(0xFFEFF1F7) to Color(0xFF44474F)
         }
