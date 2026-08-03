@@ -19,4 +19,10 @@ import javax.inject.Singleton
 class AudioFxStateHolder @Inject constructor() {
     @Volatile var lofiEnabled: Boolean = false
     @Volatile var lofiIntensity: Int = 40
+    @Volatile var radioEnabled: Boolean = false
+    @Volatile var radioIntensity: Int = 50
+    @Volatile var wowFlutterEnabled: Boolean = false
+    @Volatile var wowFlutterIntensity: Int = 30
+    @Volatile var reverbEnabled: Boolean = false
+    @Volatile var reverbIntensity: Int = 35
 }
