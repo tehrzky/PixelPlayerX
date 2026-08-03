@@ -128,13 +128,29 @@ internal fun rememberSheetActionHandlers(
 
     val onNavigateToEqualizer = remember(navController) {
         {
-            navController.navigateSafely(Screen.Equalizer.route)
+            scope.launch {
+                sheetMotionControllerState.value.snapCollapsed(sheetCollapsedTargetYState.value)
+            }
+            playerViewModelState.value.collapsePlayerSheet()
+            queueSheetControllerState.value.animate(false)
+            sheetModalOverlayControllerState.value.updateSelectedSongForInfo(null)
+            navController.navigateSafely(Screen.Equalizer.route) {
+                launchSingleTop = false
+            }
             Unit
         }
     }
     val onNavigateToAudioFx = remember(navController) {
         {
-            navController.navigateSafely(Screen.AudioFx.route)
+            scope.launch {
+                sheetMotionControllerState.value.snapCollapsed(sheetCollapsedTargetYState.value)
+            }
+            playerViewModelState.value.collapsePlayerSheet()
+            queueSheetControllerState.value.animate(false)
+            sheetModalOverlayControllerState.value.updateSelectedSongForInfo(null)
+            navController.navigateSafely(Screen.AudioFx.route) {
+                launchSingleTop = false
+            }
             Unit
         }
     }
