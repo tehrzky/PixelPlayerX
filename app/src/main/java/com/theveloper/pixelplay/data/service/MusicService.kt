@@ -525,6 +525,36 @@ class MusicService : MediaLibraryService() {
                 }
         }
         serviceScope.launch {
+            combine(
+                audioFxPreferencesRepository.radioEnabledFlow,
+                audioFxPreferencesRepository.radioIntensityFlow
+            ) { enabled, intensity -> enabled to intensity }
+                .collect { (enabled, intensity) ->
+                    audioFxStateHolder.radioEnabled = enabled
+                    audioFxStateHolder.radioIntensity = intensity
+                }
+        }
+        serviceScope.launch {
+            combine(
+                audioFxPreferencesRepository.wowFlutterEnabledFlow,
+                audioFxPreferencesRepository.wowFlutterIntensityFlow
+            ) { enabled, intensity -> enabled to intensity }
+                .collect { (enabled, intensity) ->
+                    audioFxStateHolder.wowFlutterEnabled = enabled
+                    audioFxStateHolder.wowFlutterIntensity = intensity
+                }
+        }
+        serviceScope.launch {
+            combine(
+                audioFxPreferencesRepository.reverbEnabledFlow,
+                audioFxPreferencesRepository.reverbIntensityFlow
+            ) { enabled, intensity -> enabled to intensity }
+                .collect { (enabled, intensity) ->
+                    audioFxStateHolder.reverbEnabled = enabled
+                    audioFxStateHolder.reverbIntensity = intensity
+                }
+        }
+        serviceScope.launch {
             // Re-apply ReplayGain whenever the player is rebuilt (Hi-Fi mode toggle, the
             // MTK audio-offload stall fallback, or any future rebuild reason) — a rebuild
             // swaps in a new player instance at default volume, and without this, RG only
