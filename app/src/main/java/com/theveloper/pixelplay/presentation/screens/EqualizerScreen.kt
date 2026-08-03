@@ -379,8 +379,8 @@ fun EqualizerScreen(
                     isReverbSupported = uiState.isReverbSupported,
                     isReverbDismissed = uiState.isReverbDismissed,
                     onReverbEnabledChange = { equalizerViewModel.setReverbEnabled(it) },
-                    onReverbStrengthChange = { equalizerViewModel.setReverbStrength(it.roundToInt()) },
-                    onReverbDecayChange = { equalizerViewModel.setReverbDecay(it.roundToInt()) },
+                    onReverbStrengthChange = { equalizerViewModel.setReverbStrength(it) },
+                    onReverbDecayChange = { equalizerViewModel.setReverbDecay(it) },
                     onDismissReverb = { equalizerViewModel.setReverbDismissed(true) }
                 )
             }
