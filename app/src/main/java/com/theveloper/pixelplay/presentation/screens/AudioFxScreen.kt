@@ -1,18 +1,16 @@
 package com.theveloper.pixelplay.presentation.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.Card
@@ -20,8 +18,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,19 +44,19 @@ fun AudioFxScreen(
 
     LazyColumn(
         contentPadding = PaddingValues(
-            top = topBarHeight + 12.dp,
+            top = topBarHeight + 8.dp,
             bottom = MiniPlayerHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 48.dp,
             start = 16.dp,
             end = 16.dp
         ),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         item(key = "info_banner") {
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer
                 ),
-                shape = RoundedCornerShape(16.dp)
+                modifier = Modifier.padding(bottom = 12.dp)
             ) {
                 Row(
                     modifier = Modifier.padding(12.dp),
@@ -72,7 +68,7 @@ fun AudioFxScreen(
                         tint = MaterialTheme.colorScheme.onSecondaryContainer
                     )
                     Text(
-                        text = stringResource(R.string.audio_fx_coming_soon),
+                        text = stringResource(R.string.audio_fx_active_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
@@ -80,44 +76,83 @@ fun AudioFxScreen(
             }
         }
 
-        item(key = "lofi") {
-            AudioFxCard(
+        item(key = "lofi_header") { AudioFxSectionHeader(stringResource(R.string.audio_fx_lofi_title)) }
+        item(key = "lofi_toggle") {
+            SwitchSettingItem(
                 title = stringResource(R.string.audio_fx_lofi_title),
                 subtitle = stringResource(R.string.audio_fx_lofi_subtitle),
-                enabled = uiState.lofiEnabled,
-                intensity = uiState.lofiIntensity,
-                onEnabledChange = audioFxViewModel::setLofiEnabled,
-                onIntensityChange = audioFxViewModel::setLofiIntensity
+                checked = uiState.lofiEnabled,
+                onCheckedChange = audioFxViewModel::setLofiEnabled
             )
         }
-        item(key = "radio") {
-            AudioFxCard(
+        item(key = "lofi_slider") {
+            SliderSettingsItem(
+                label = stringResource(R.string.audio_fx_intensity_label),
+                value = uiState.lofiIntensity.toFloat(),
+                valueRange = 0f..100f,
+                steps = 0,
+                onValueChange = { audioFxViewModel.setLofiIntensity(it.toInt()) },
+                valueText = { value -> "${value.toInt()}%" }
+            )
+        }
+
+        item(key = "radio_header") { AudioFxSectionHeader(stringResource(R.string.audio_fx_radio_title)) }
+        item(key = "radio_toggle") {
+            SwitchSettingItem(
                 title = stringResource(R.string.audio_fx_radio_title),
                 subtitle = stringResource(R.string.audio_fx_radio_subtitle),
-                enabled = uiState.radioEnabled,
-                intensity = uiState.radioIntensity,
-                onEnabledChange = audioFxViewModel::setRadioEnabled,
-                onIntensityChange = audioFxViewModel::setRadioIntensity
+                checked = uiState.radioEnabled,
+                onCheckedChange = audioFxViewModel::setRadioEnabled
             )
         }
-        item(key = "wow_flutter") {
-            AudioFxCard(
+        item(key = "radio_slider") {
+            SliderSettingsItem(
+                label = stringResource(R.string.audio_fx_intensity_label),
+                value = uiState.radioIntensity.toFloat(),
+                valueRange = 0f..100f,
+                steps = 0,
+                onValueChange = { audioFxViewModel.setRadioIntensity(it.toInt()) },
+                valueText = { value -> "${value.toInt()}%" }
+            )
+        }
+
+        item(key = "wow_flutter_header") { AudioFxSectionHeader(stringResource(R.string.audio_fx_wow_flutter_title)) }
+        item(key = "wow_flutter_toggle") {
+            SwitchSettingItem(
                 title = stringResource(R.string.audio_fx_wow_flutter_title),
                 subtitle = stringResource(R.string.audio_fx_wow_flutter_subtitle),
-                enabled = uiState.wowFlutterEnabled,
-                intensity = uiState.wowFlutterIntensity,
-                onEnabledChange = audioFxViewModel::setWowFlutterEnabled,
-                onIntensityChange = audioFxViewModel::setWowFlutterIntensity
+                checked = uiState.wowFlutterEnabled,
+                onCheckedChange = audioFxViewModel::setWowFlutterEnabled
             )
         }
-        item(key = "reverb") {
-            AudioFxCard(
+        item(key = "wow_flutter_slider") {
+            SliderSettingsItem(
+                label = stringResource(R.string.audio_fx_intensity_label),
+                value = uiState.wowFlutterIntensity.toFloat(),
+                valueRange = 0f..100f,
+                steps = 0,
+                onValueChange = { audioFxViewModel.setWowFlutterIntensity(it.toInt()) },
+                valueText = { value -> "${value.toInt()}%" }
+            )
+        }
+
+        item(key = "reverb_header") { AudioFxSectionHeader(stringResource(R.string.audio_fx_reverb_title)) }
+        item(key = "reverb_toggle") {
+            SwitchSettingItem(
                 title = stringResource(R.string.audio_fx_reverb_title),
                 subtitle = stringResource(R.string.audio_fx_reverb_subtitle),
-                enabled = uiState.reverbEnabled,
-                intensity = uiState.reverbIntensity,
-                onEnabledChange = audioFxViewModel::setReverbEnabled,
-                onIntensityChange = audioFxViewModel::setReverbIntensity
+                checked = uiState.reverbEnabled,
+                onCheckedChange = audioFxViewModel::setReverbEnabled
+            )
+        }
+        item(key = "reverb_slider") {
+            SliderSettingsItem(
+                label = stringResource(R.string.audio_fx_intensity_label),
+                value = uiState.reverbIntensity.toFloat(),
+                valueRange = 0f..100f,
+                steps = 0,
+                onValueChange = { audioFxViewModel.setReverbIntensity(it.toInt()) },
+                valueText = { value -> "${value.toInt()}%" }
             )
         }
     }
@@ -132,54 +167,11 @@ fun AudioFxScreen(
 }
 
 @Composable
-private fun AudioFxCard(
-    title: String,
-    subtitle: String,
-    enabled: Boolean,
-    intensity: Int,
-    onEnabledChange: (Boolean) -> Unit,
-    onIntensityChange: (Int) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        ),
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                    Text(text = title, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(checked = enabled, onCheckedChange = onEnabledChange)
-            }
-            Slider(
-                value = intensity.toFloat(),
-                onValueChange = { onIntensityChange(it.toInt()) },
-                valueRange = 0f..100f,
-                enabled = enabled,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(24.dp),
-                track = { state ->
-                    androidx.compose.material3.SliderDefaults.Track(
-                        sliderState = state,
-                        modifier = Modifier.height(6.dp)
-                    )
-                }
-            )
-        }
-    }
+private fun AudioFxSectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 4.dp)
+    )
 }
