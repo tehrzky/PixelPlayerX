@@ -402,17 +402,17 @@ fun EqualizerScreen(
                     bathroomReverbEnabled = uiState.radioBathroomReverbEnabled,
                     bathroomReverbAmount = uiState.radioBathroomReverbAmount,
                     onEnabledChange = { equalizerViewModel.setRadioEffectEnabled(it) },
-                    onNoiseChange = { equalizerViewModel.setRadioNoise(it.roundToInt()) },
-                    onDistortionChange = { equalizerViewModel.setRadioDistortion(it.roundToInt()) },
+                    onNoiseChange = { equalizerViewModel.setRadioNoise(it) },
+                    onDistortionChange = { equalizerViewModel.setRadioDistortion(it) },
                     onBandpassChange = { equalizerViewModel.setRadioBandpass(it) },
                     onCrackleChange = { equalizerViewModel.setRadioCrackle(it) },
                     onTapeWowEnabledChange = { equalizerViewModel.setRadioTapeWowEnabled(it) },
-                    onTapeWowDepthChange = { equalizerViewModel.setRadioTapeWowDepth(it.roundToInt()) },
+                    onTapeWowDepthChange = { equalizerViewModel.setRadioTapeWowDepth(it) },
                     onPhaserEnabledChange = { equalizerViewModel.setRadioPhaserEnabled(it) },
-                    onPhaserDepthChange = { equalizerViewModel.setRadioPhaserDepth(it.roundToInt()) },
-                    onPhaserRateChange = { equalizerViewModel.setRadioPhaserRate(it.roundToInt()) },
+                    onPhaserDepthChange = { equalizerViewModel.setRadioPhaserDepth(it) },
+                    onPhaserRateChange = { equalizerViewModel.setRadioPhaserRate(it) },
                     onBathroomReverbEnabledChange = { equalizerViewModel.setRadioBathroomReverbEnabled(it) },
-                    onBathroomReverbAmountChange = { equalizerViewModel.setRadioBathroomReverbAmount(it.roundToInt()) }
+                    onBathroomReverbAmountChange = { equalizerViewModel.setRadioBathroomReverbAmount(it) }
                 )
             }
 
@@ -525,13 +525,10 @@ private fun PresetTabsRow(
         presets.forEachIndexed { index, preset ->
             val isPinnedCustom = preset.isCustom
             
-            TabAnimation(
-                index = index,
-                title = preset.name,
-                unselectedColor = MaterialTheme.colorScheme.surfaceContainerLowest,
-                selectedIndex = selectedIndex,
-                onClick = { onPresetSelected(preset) }
-            ) {
+                    Tab(
+            selected = selectedIndex == index,
+            onClick = { onPresetSelected(preset) },
+            text = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = preset.displayName,
@@ -544,26 +541,25 @@ private fun PresetTabsRow(
                             imageVector = Icons.Filled.Star,
                             contentDescription = stringResource(R.string.equalizer_custom_preset_cd),
                             modifier = Modifier.size(10.dp),
-                            tint = if (selectedIndex == index) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary 
+                            tint = if (selectedIndex == index) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
                         )
                     }
                 }
             }
+        )
         }
         
-        TabAnimation(
-            index = -1,
-            title = stringResource(R.string.equalizer_edit_tab_title),
-            unselectedColor = MaterialTheme.colorScheme.surfaceContainerLowest,
-            selectedIndex = selectedIndex,
-            onClick = onEditClick 
-        ) {
-             Icon(
-                Icons.Rounded.Edit,
-                contentDescription = stringResource(R.string.equalizer_edit_presets_cd),
-                modifier = Modifier.size(18.dp)
-            )
-        }
+                Tab(
+            selected = false,
+            onClick = onEditClick,
+            icon = {
+                Icon(
+                    Icons.Rounded.Edit,
+                    contentDescription = stringResource(R.string.equalizer_edit_presets_cd),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        )
     }
 }
 
