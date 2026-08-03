@@ -33,7 +33,7 @@ class AudioFxViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            combine(
+            combine<Any, AudioFxUiState>(
                 audioFxPreferencesRepository.lofiEnabledFlow,
                 audioFxPreferencesRepository.lofiIntensityFlow,
                 audioFxPreferencesRepository.radioEnabledFlow,
