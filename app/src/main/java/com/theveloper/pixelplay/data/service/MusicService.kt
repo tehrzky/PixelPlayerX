@@ -48,10 +48,12 @@ import com.theveloper.pixelplay.data.diagnostics.PerformanceMetrics
 import com.theveloper.pixelplay.data.model.PlayerInfo
 import com.theveloper.pixelplay.data.model.PlaybackQueueItemSnapshot
 import com.theveloper.pixelplay.data.model.PlaybackQueueSnapshot
+import com.theveloper.pixelplay.data.preferences.AudioFxPreferencesRepository
 import com.theveloper.pixelplay.data.preferences.EqualizerPreferencesRepository
 import com.theveloper.pixelplay.data.preferences.ThemePreferencesRepository
 import com.theveloper.pixelplay.data.preferences.UserPreferencesRepository
 import com.theveloper.pixelplay.data.repository.MusicRepository
+import com.theveloper.pixelplay.data.service.player.AudioFxStateHolder
 import com.theveloper.pixelplay.data.service.player.DualPlayerEngine
 import com.theveloper.pixelplay.data.service.player.TransitionController
 import com.theveloper.pixelplay.ui.glancewidget.PlayerActions
@@ -63,6 +65,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -151,6 +154,10 @@ class MusicService : MediaLibraryService() {
     lateinit var userPreferencesRepository: UserPreferencesRepository
     @Inject
     lateinit var equalizerPreferencesRepository: EqualizerPreferencesRepository
+    @Inject
+    lateinit var audioFxPreferencesRepository: AudioFxPreferencesRepository
+    @Inject
+    lateinit var audioFxStateHolder: AudioFxStateHolder
     @Inject
     lateinit var themePreferencesRepository: ThemePreferencesRepository
     @Inject
@@ -502,6 +509,20 @@ class MusicService : MediaLibraryService() {
                     equalizerManager.attachToAudioSessionIfNeeded(newSessionId, source = "session_changed")
                 }
             }
+        }
+        serviceScope.launch {
+            // Prime Audio FX live state before first playback, and keep it in sync for
+            // the whole service lifetime — mirrors the Equalizer restore block above.
+            // Without this, Lo-fi only applies once the Audio FX screen has been opened
+            // at least once (its ViewModel is what normally primes the live state).
+            combine(
+                audioFxPreferencesRepository.lofiEnabledFlow,
+                audioFxPreferencesRepository.lofiIntensityFlow
+            ) { enabled, intensity -> enabled to intensity }
+                .collect { (enabled, intensity) ->
+                    audioFxStateHolder.lofiEnabled = enabled
+                    audioFxStateHolder.lofiIntensity = intensity
+                }
         }
         serviceScope.launch {
             // Re-apply ReplayGain whenever the player is rebuilt (Hi-Fi mode toggle, the
