@@ -19,6 +19,7 @@
     <string name="settings_category_developer_subtitle">Experimental features and debugging</string>
     <string name="settings_category_equalizer_title">Equalizer</string>
     <string name="audio_fx_title">Audio FX</string>
+    <string name="settings_category_audio_fx_subtitle">Lo-fi, radio, wow &amp; flutter, reverb</string>
     <string name="audio_fx_lofi_title">Lo-fi</string>
     <string name="audio_fx_lofi_subtitle">Bitcrush + soft clipping for a warm, degraded sound</string>
     <string name="audio_fx_radio_title">Radio</string>
