@@ -220,7 +220,7 @@ class EqualizerViewModel @Inject constructor(
     }
 
         private fun observeEqualizerState() {
-        val coreFlow = combine(
+                val coreFlow = combine<Any, CoreEqSettings>(
             equalizerPreferencesRepository.equalizerEnabledFlow,
             equalizerPreferencesRepository.equalizerPresetFlow,
             equalizerPreferencesRepository.equalizerCustomBandsFlow,
@@ -239,7 +239,7 @@ class EqualizerViewModel @Inject constructor(
             )
         }
 
-        val effectFlow = combine(
+        val effectFlow = combine<Any, EffectSettings>(
             equalizerPreferencesRepository.bassBoostEnabledFlow,
             equalizerPreferencesRepository.bassBoostStrengthFlow,
             equalizerPreferencesRepository.bassBoostDismissedFlow,
@@ -272,7 +272,7 @@ class EqualizerViewModel @Inject constructor(
             )
         }
 
-        val radioFlow = combine(
+                val radioFlow = combine<Any, RadioSettings>(
             equalizerPreferencesRepository.radioEnabledFlow,
             equalizerPreferencesRepository.radioNoiseFlow,
             equalizerPreferencesRepository.radioDistortionFlow,
