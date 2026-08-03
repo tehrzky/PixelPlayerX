@@ -134,9 +134,7 @@ internal fun rememberSheetActionHandlers(
             playerViewModelState.value.collapsePlayerSheet()
             queueSheetControllerState.value.animate(false)
             sheetModalOverlayControllerState.value.updateSelectedSongForInfo(null)
-            navController.navigateSafely(Screen.Equalizer.route) {
-                launchSingleTop = false
-            }
+            navController.navigateSafely(Screen.Equalizer.route)
             Unit
         }
     }
@@ -148,9 +146,7 @@ internal fun rememberSheetActionHandlers(
             playerViewModelState.value.collapsePlayerSheet()
             queueSheetControllerState.value.animate(false)
             sheetModalOverlayControllerState.value.updateSelectedSongForInfo(null)
-            navController.navigateSafely(Screen.AudioFx.route) {
-                launchSingleTop = false
-            }
+            navController.navigateSafely(Screen.AudioFx.route)
             Unit
         }
     }
