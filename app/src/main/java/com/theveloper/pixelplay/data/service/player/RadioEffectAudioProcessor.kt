@@ -82,7 +82,7 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
     private var allPassBuffers: Array<FloatArray> = Array(2) { FloatArray(0) }
     private var allPassIndices = IntArray(2) { 0 }
     private var allPassDelayLengths = IntArray(2) { 0 }
-
+    private var inputEnded = false
     fun setParameters(
         enabled: Boolean,
         noiseLevel: Float,
@@ -210,11 +210,10 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
     }
 
     override fun queueEndOfStream() {
-        inputBuffer = EMPTY_BUFFER
-        outputBuffer = EMPTY_BUFFER
+        inputEnded = true
     }
 
-    override fun isEnded(): Boolean = true
+    override fun isEnded(): Boolean = inputEnded && outputBuffer === EMPTY_BUFFER
 
     override fun flush() {
         inputBuffer = EMPTY_BUFFER
@@ -243,6 +242,7 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
         combIndices.fill(0)
         allPassBuffers.forEach { it.fill(0f) }
         allPassIndices.fill(0)
+        inputEnded = false
     }
 
     override fun reset() {
