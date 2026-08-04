@@ -29,18 +29,18 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
     @Volatile var bathroomReverbEnabled = false
     @Volatile var bathroomReverbAmount = 0.3f
 
-    private var pendingEnabled = false
-    private var pendingNoiseLevel = 0.15f
-    private var pendingDistortionAmount = 0.25f
-    private var pendingRadioBand = true
-    private var pendingCrackleEnabled = true
-    private var pendingTapeWowEnabled = false
-    private var pendingTapeWowDepth = 0.3f
-    private var pendingPhaserEnabled = false
-    private var pendingPhaserDepth = 0.5f
-    private var pendingPhaserRate = 0.3f
-    private var pendingBathroomReverbEnabled = false
-    private var pendingBathroomReverbAmount = 0.3f
+    @Volatile private var pendingEnabled = false
+    @Volatile private var pendingNoiseLevel = 0.15f
+    @Volatile private var pendingDistortionAmount = 0.25f
+    @Volatile private var pendingRadioBand = true
+    @Volatile private var pendingCrackleEnabled = true
+    @Volatile private var pendingTapeWowEnabled = false
+    @Volatile private var pendingTapeWowDepth = 0.3f
+    @Volatile private var pendingPhaserEnabled = false
+    @Volatile private var pendingPhaserDepth = 0.5f
+    @Volatile private var pendingPhaserRate = 0.3f
+    @Volatile private var pendingBathroomReverbEnabled = false
+    @Volatile private var pendingBathroomReverbAmount = 0.3f
 
     // --- AudioProcessor state ---
     private var inputAudioFormat: AudioProcessor.AudioFormat = AudioProcessor.AudioFormat.NOT_SET
