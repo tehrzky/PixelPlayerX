@@ -222,7 +222,7 @@ internal fun loadControlBufferProfileFor(isLowRamDevice: Boolean): LoadControlBu
 @Singleton
 class DualPlayerEngine @Inject constructor(
     @param:ApplicationContext private val context: Context,
-    private val radioEffectProcessor: RadioEffectAudioProcessor
+    private val radioEffectProcessor: RadioEffectAudioProcessor,
     private val telegramRepository: TelegramRepository,
     private val telegramStreamProxy: com.theveloper.pixelplay.data.telegram.TelegramStreamProxy,
     private val neteaseStreamProxy: NeteaseStreamProxy,
