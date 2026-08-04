@@ -7,6 +7,7 @@ import androidx.media3.common.audio.AudioProcessor.AudioFormat
 import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import timber.log.Timber
 import kotlin.math.floor
 import kotlin.math.sin
 
@@ -51,49 +52,58 @@ class WowFlutterAudioProcessor(
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         if (!isActive()) return
-        val enabled = state.wowFlutterEnabled
-        val intensity = state.wowFlutterIntensity.coerceIn(0, 100)
+        try {
+            val enabled = state.wowFlutterEnabled
+            val intensity = state.wowFlutterIntensity.coerceIn(0, 100)
 
-        if (!enabled || intensity == 0) {
-            outputBuffer = ensureOutputBuffer(inputBuffer.remaining())
-            outputBuffer.put(inputBuffer)
+            if (!enabled || intensity == 0) {
+                outputBuffer = ensureOutputBuffer(inputBuffer.remaining())
+                outputBuffer.put(inputBuffer)
+                outputBuffer.flip()
+                return
+            }
+
+            val t = intensity / 100f
+            val depthSamples = t * 0.004f * sampleRate
+            val baseDelaySamples = 20f + depthSamples
+            val wowRate = 0.8
+            val flutterRate = 6.5
+
+            if (inputFormat.encoding == C.ENCODING_PCM_FLOAT) {
+                val frameCount = inputBuffer.remaining() / Float.SIZE_BYTES
+                outputBuffer = ensureOutputBuffer(frameCount * Float.SIZE_BYTES)
+                val floatIn = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asFloatBuffer()
+                var ch = 0
+                repeat(frameCount) {
+                    outputBuffer.putFloat(processSample(floatIn.get(), ch, baseDelaySamples, depthSamples, wowRate, flutterRate))
+                    if (ch == channelCount - 1) advanceFrame()
+                    ch = (ch + 1) % channelCount
+                }
+                inputBuffer.position(inputBuffer.limit())
+            } else {
+                val frameCount = inputBuffer.remaining() / Short.SIZE_BYTES
+                outputBuffer = ensureOutputBuffer(frameCount * Short.SIZE_BYTES)
+                val shortIn = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer()
+                var ch = 0
+                repeat(frameCount) {
+                    val y = processSample(shortIn.get() / 32768f, ch, baseDelaySamples, depthSamples, wowRate, flutterRate)
+                    val out = (y.coerceIn(-1f, 1f) * 32767f).toInt()
+                        .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                    outputBuffer.putShort(out.toShort())
+                    if (ch == channelCount - 1) advanceFrame()
+                    ch = (ch + 1) % channelCount
+                }
+                inputBuffer.position(inputBuffer.limit())
+            }
             outputBuffer.flip()
-            return
-        }
-
-        val t = intensity / 100f
-        val depthSamples = t * 0.004f * sampleRate
-        val baseDelaySamples = 20f + depthSamples
-        val wowRate = 0.8
-        val flutterRate = 6.5
-
-        if (inputFormat.encoding == C.ENCODING_PCM_FLOAT) {
-            val frameCount = inputBuffer.remaining() / Float.SIZE_BYTES
-            outputBuffer = ensureOutputBuffer(frameCount * Float.SIZE_BYTES)
-            val floatIn = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asFloatBuffer()
-            var ch = 0
-            repeat(frameCount) {
-                outputBuffer.putFloat(processSample(floatIn.get(), ch, baseDelaySamples, depthSamples, wowRate, flutterRate))
-                if (ch == channelCount - 1) advanceFrame()
-                ch = (ch + 1) % channelCount
+        } catch (t: Throwable) {
+            Timber.tag("AudioFxProcessor").e(t, "WowFlutter DSP failed, falling back to pass-through")
+            if (inputBuffer.hasRemaining()) {
+                outputBuffer = ensureOutputBuffer(inputBuffer.remaining())
+                outputBuffer.put(inputBuffer)
+                outputBuffer.flip()
             }
-            inputBuffer.position(inputBuffer.limit())
-        } else {
-            val frameCount = inputBuffer.remaining() / Short.SIZE_BYTES
-            outputBuffer = ensureOutputBuffer(frameCount * Short.SIZE_BYTES)
-            val shortIn = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer()
-            var ch = 0
-            repeat(frameCount) {
-                val y = processSample(shortIn.get() / 32768f, ch, baseDelaySamples, depthSamples, wowRate, flutterRate)
-                val out = (y.coerceIn(-1f, 1f) * 32767f).toInt()
-                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-                outputBuffer.putShort(out.toShort())
-                if (ch == channelCount - 1) advanceFrame()
-                ch = (ch + 1) % channelCount
-            }
-            inputBuffer.position(inputBuffer.limit())
         }
-        outputBuffer.flip()
     }
 
     private fun advanceFrame() {
