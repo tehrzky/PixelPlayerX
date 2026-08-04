@@ -126,7 +126,7 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
     }
 
     override fun isActive(): Boolean {
-        return enabled && inputAudioFormat != AudioProcessor.AudioFormat.NOT_SET
+        return inputAudioFormat != AudioProcessor.AudioFormat.NOT_SET
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
@@ -149,9 +149,10 @@ class RadioEffectAudioProcessor @Inject constructor() : AudioProcessor {
         bathroomReverbEnabled = pendingBathroomReverbEnabled
         bathroomReverbAmount = pendingBathroomReverbAmount
 
-        if (!isActive()) {
-            this.inputBuffer = inputBuffer
-            outputBuffer = EMPTY_BUFFER
+        if (!enabled) {
+            // Pass-through: wrap the input buffer directly as output.
+            this.inputBuffer = EMPTY_BUFFER
+            outputBuffer = inputBuffer
             return
         }
 
