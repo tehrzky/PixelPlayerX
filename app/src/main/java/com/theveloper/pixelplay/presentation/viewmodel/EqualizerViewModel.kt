@@ -699,27 +699,23 @@ class EqualizerViewModel @Inject constructor(
         }
     }
 
-        private fun applyRadioProcessorState() {
+    private fun applyRadioProcessorState() {
         val state = _uiState.value
         val active = state.isEnabled && state.radioEffectEnabled
-        radioEffectProcessor.enabled = active
-
-        if (active) {
-            radioEffectProcessor.setParameters(
-                enabled = active,
-                noiseLevel = state.radioNoise / 1000f,
-                distortionAmount = state.radioDistortion / 1000f,
-                radioBand = state.radioBandpass,
-                crackleEnabled = state.radioCrackle,
-                tapeWowEnabled = state.radioTapeWowEnabled,
-                tapeWowDepth = state.radioTapeWowDepth / 1000f,
-                phaserEnabled = state.radioPhaserEnabled,
-                phaserDepth = state.radioPhaserDepth / 1000f,
-                phaserRate = state.radioPhaserRate / 1000f,
-                bathroomReverbEnabled = state.radioBathroomReverbEnabled,
-                bathroomReverbAmount = state.radioBathroomReverbAmount / 1000f
-            )
-        }
+        radioEffectProcessor.setParameters(
+            enabled = active,
+            noiseLevel = state.radioNoise / 1000f,
+            distortionAmount = state.radioDistortion / 1000f,
+            radioBand = state.radioBandpass,
+            crackleEnabled = state.radioCrackle,
+            tapeWowEnabled = state.radioTapeWowEnabled,
+            tapeWowDepth = state.radioTapeWowDepth / 1000f,
+            phaserEnabled = state.radioPhaserEnabled,
+            phaserDepth = state.radioPhaserDepth / 1000f,
+            phaserRate = state.radioPhaserRate / 1000f,
+            bathroomReverbEnabled = state.radioBathroomReverbEnabled,
+            bathroomReverbAmount = state.radioBathroomReverbAmount / 1000f
+        )
     }
 
     fun setBassBoostDismissed(dismissed: Boolean) {
