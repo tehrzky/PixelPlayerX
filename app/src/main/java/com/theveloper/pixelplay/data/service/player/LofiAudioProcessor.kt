@@ -7,9 +7,11 @@ import androidx.media3.common.audio.AudioProcessor.AudioFormat
 import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import timber.log.Timber
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.tanh
+
 
 /**
  * Bitcrush + soft-clip "lo-fi" effect. Reads live enable/intensity state from
@@ -47,50 +49,59 @@ class LofiAudioProcessor(
     override fun queueInput(inputBuffer: ByteBuffer) {
         if (!isActive()) return
 
-        val enabled = state.lofiEnabled
-        val intensity = state.lofiIntensity.coerceIn(0, 100)
+        try {
+            val enabled = state.lofiEnabled
+            val intensity = state.lofiIntensity.coerceIn(0, 100)
 
-        if (!enabled || intensity == 0) {
-            // Bypass: pass the audio through completely unmodified.
-            outputBuffer = ensureOutputBuffer(inputBuffer.remaining())
-            outputBuffer.put(inputBuffer)
+            if (!enabled || intensity == 0) {
+                // Bypass: pass the audio through completely unmodified.
+                outputBuffer = ensureOutputBuffer(inputBuffer.remaining())
+                outputBuffer.put(inputBuffer)
+                outputBuffer.flip()
+                return
+            }
+
+            // Map intensity 0..100 to:
+            //  - quantization depth: 16 bits (no crush) down to ~4 bits (heavy crush)
+            //  - drive: 1x (clean) up to 4x (heavily saturated) into tanh soft clipper
+            val depthBits = 16f - (intensity / 100f) * 12f
+            val levels = 2f.pow(depthBits)
+            val drive = 1f + (intensity / 100f) * 3f
+
+            if (inputFormat.encoding == C.ENCODING_PCM_FLOAT) {
+                val frameCount = inputBuffer.remaining() / Float.SIZE_BYTES
+                outputBuffer = ensureOutputBuffer(frameCount * Float.SIZE_BYTES)
+                val floatIn = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asFloatBuffer()
+                repeat(frameCount) {
+                    val sample = floatIn.get()
+                    val quantized = (sample * levels).roundToInt() / levels
+                    val driven = tanh(quantized * drive) / tanh(drive)
+                    outputBuffer.putFloat(driven.coerceIn(-1f, 1f))
+                }
+                inputBuffer.position(inputBuffer.limit())
+            } else {
+                val frameCount = inputBuffer.remaining() / Short.SIZE_BYTES
+                outputBuffer = ensureOutputBuffer(frameCount * Short.SIZE_BYTES)
+                val shortIn = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer()
+                repeat(frameCount) {
+                    val sample = shortIn.get() / 32768f
+                    val quantized = (sample * levels).roundToInt() / levels
+                    val driven = tanh(quantized * drive) / tanh(drive)
+                    val out = (driven.coerceIn(-1f, 1f) * 32767f).roundToInt()
+                        .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                    outputBuffer.putShort(out.toShort())
+                }
+                inputBuffer.position(inputBuffer.limit())
+            }
             outputBuffer.flip()
-            return
-        }
-
-        // Map intensity 0..100 to:
-        //  - quantization depth: 16 bits (no crush) down to ~4 bits (heavy crush)
-        //  - drive: 1x (clean) up to 4x (heavily saturated) into tanh soft clipper
-        val depthBits = 16f - (intensity / 100f) * 12f
-        val levels = 2f.pow(depthBits)
-        val drive = 1f + (intensity / 100f) * 3f
-
-        if (inputFormat.encoding == C.ENCODING_PCM_FLOAT) {
-            val frameCount = inputBuffer.remaining() / Float.SIZE_BYTES
-            outputBuffer = ensureOutputBuffer(frameCount * Float.SIZE_BYTES)
-            val floatIn = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asFloatBuffer()
-            repeat(frameCount) {
-                val sample = floatIn.get()
-                val quantized = (sample * levels).roundToInt() / levels
-                val driven = tanh(quantized * drive) / tanh(drive)
-                outputBuffer.putFloat(driven.coerceIn(-1f, 1f))
+        } catch (t: Throwable) {
+            Timber.tag("AudioFxProcessor").e(t, "Lofi DSP failed, falling back to pass-through")
+            if (inputBuffer.hasRemaining()) {
+                outputBuffer = ensureOutputBuffer(inputBuffer.remaining())
+                outputBuffer.put(inputBuffer)
+                outputBuffer.flip()
             }
-            inputBuffer.position(inputBuffer.limit())
-        } else {
-            val frameCount = inputBuffer.remaining() / Short.SIZE_BYTES
-            outputBuffer = ensureOutputBuffer(frameCount * Short.SIZE_BYTES)
-            val shortIn = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer()
-            repeat(frameCount) {
-                val sample = shortIn.get() / 32768f
-                val quantized = (sample * levels).roundToInt() / levels
-                val driven = tanh(quantized * drive) / tanh(drive)
-                val out = (driven.coerceIn(-1f, 1f) * 32767f).roundToInt()
-                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-                outputBuffer.putShort(out.toShort())
-            }
-            inputBuffer.position(inputBuffer.limit())
         }
-        outputBuffer.flip()
     }
 
     private fun ensureOutputBuffer(requiredCapacity: Int): ByteBuffer {
