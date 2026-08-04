@@ -7,6 +7,7 @@ import androidx.media3.common.audio.AudioProcessor.AudioFormat
 import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import timber.log.Timber
 import kotlin.random.Random
 
 /**
@@ -49,49 +50,58 @@ class RadioAudioProcessor(
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         if (!isActive()) return
-        val enabled = state.radioEnabled
-        val intensity = state.radioIntensity.coerceIn(0, 100)
+        try {
+            val enabled = state.radioEnabled
+            val intensity = state.radioIntensity.coerceIn(0, 100)
 
-        if (!enabled || intensity == 0) {
-            outputBuffer = ensureOutputBuffer(inputBuffer.remaining())
-            outputBuffer.put(inputBuffer)
+            if (!enabled || intensity == 0) {
+                outputBuffer = ensureOutputBuffer(inputBuffer.remaining())
+                outputBuffer.put(inputBuffer)
+                outputBuffer.flip()
+                return
+            }
+
+            val t = intensity / 100f
+            val sampleRate = inputFormat.sampleRate.toFloat()
+            val lpCutoff = 12000f - t * 9800f
+            val hpCutoff = 20f + t * 380f
+            val lpAlpha = lpAlpha(lpCutoff, sampleRate)
+            val hpAlpha = hpAlpha(hpCutoff, sampleRate)
+            val noiseAmp = t * 0.035f
+
+            if (inputFormat.encoding == C.ENCODING_PCM_FLOAT) {
+                val frameCount = inputBuffer.remaining() / Float.SIZE_BYTES
+                outputBuffer = ensureOutputBuffer(frameCount * Float.SIZE_BYTES)
+                val floatIn = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asFloatBuffer()
+                var ch = 0
+                repeat(frameCount) {
+                    outputBuffer.putFloat(processSample(floatIn.get(), ch, lpAlpha, hpAlpha, noiseAmp))
+                    ch = (ch + 1) % channelCount
+                }
+                inputBuffer.position(inputBuffer.limit())
+            } else {
+                val frameCount = inputBuffer.remaining() / Short.SIZE_BYTES
+                outputBuffer = ensureOutputBuffer(frameCount * Short.SIZE_BYTES)
+                val shortIn = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer()
+                var ch = 0
+                repeat(frameCount) {
+                    val y = processSample(shortIn.get() / 32768f, ch, lpAlpha, hpAlpha, noiseAmp)
+                    val out = (y.coerceIn(-1f, 1f) * 32767f).toInt()
+                        .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                    outputBuffer.putShort(out.toShort())
+                    ch = (ch + 1) % channelCount
+                }
+                inputBuffer.position(inputBuffer.limit())
+            }
             outputBuffer.flip()
-            return
-        }
-
-        val t = intensity / 100f
-        val sampleRate = inputFormat.sampleRate.toFloat()
-        val lpCutoff = 12000f - t * 9800f
-        val hpCutoff = 20f + t * 380f
-        val lpAlpha = lpAlpha(lpCutoff, sampleRate)
-        val hpAlpha = hpAlpha(hpCutoff, sampleRate)
-        val noiseAmp = t * 0.035f
-
-        if (inputFormat.encoding == C.ENCODING_PCM_FLOAT) {
-            val frameCount = inputBuffer.remaining() / Float.SIZE_BYTES
-            outputBuffer = ensureOutputBuffer(frameCount * Float.SIZE_BYTES)
-            val floatIn = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asFloatBuffer()
-            var ch = 0
-            repeat(frameCount) {
-                outputBuffer.putFloat(processSample(floatIn.get(), ch, lpAlpha, hpAlpha, noiseAmp))
-                ch = (ch + 1) % channelCount
+        } catch (t: Throwable) {
+            Timber.tag("AudioFxProcessor").e(t, "Radio DSP failed, falling back to pass-through")
+            if (inputBuffer.hasRemaining()) {
+                outputBuffer = ensureOutputBuffer(inputBuffer.remaining())
+                outputBuffer.put(inputBuffer)
+                outputBuffer.flip()
             }
-            inputBuffer.position(inputBuffer.limit())
-        } else {
-            val frameCount = inputBuffer.remaining() / Short.SIZE_BYTES
-            outputBuffer = ensureOutputBuffer(frameCount * Short.SIZE_BYTES)
-            val shortIn = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer()
-            var ch = 0
-            repeat(frameCount) {
-                val y = processSample(shortIn.get() / 32768f, ch, lpAlpha, hpAlpha, noiseAmp)
-                val out = (y.coerceIn(-1f, 1f) * 32767f).toInt()
-                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-                outputBuffer.putShort(out.toShort())
-                ch = (ch + 1) % channelCount
-            }
-            inputBuffer.position(inputBuffer.limit())
         }
-        outputBuffer.flip()
     }
 
     private fun processSample(x: Float, ch: Int, lpAlpha: Float, hpAlpha: Float, noiseAmp: Float): Float {
