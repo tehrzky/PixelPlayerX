@@ -559,11 +559,15 @@ fun SliderSettingsItem(
         steps: Int,
         onValueChange: (Float) -> Unit,
         onValueChangeFinished: (() -> Unit)? = null,
-        valueText: (Float) -> String
+        valueText: (Float) -> String,
+        enabled: Boolean = true
 ) {
     Surface(
             color = MaterialTheme.colorScheme.surfaceContainer,
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .alpha(if (enabled) 1f else 0.38f)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -591,7 +595,8 @@ fun SliderSettingsItem(
                 onValueChange = onValueChange,
                 onValueChangeFinished = onValueChangeFinished,
                 valueRange = valueRange,
-                steps = steps
+                steps = steps,
+                enabled = enabled
             )
         }
     }
