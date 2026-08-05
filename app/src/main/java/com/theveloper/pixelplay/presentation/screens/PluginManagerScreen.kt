@@ -103,10 +103,14 @@ fun PluginManagerScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(plugin.definition.name, style = MaterialTheme.typography.titleMedium)
-                    if (plugin.definition.description.isNotBlank()) {
-                        Text(plugin.definition.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (plugin.definition.description.isNotBlank()) {
+                            Text(plugin.definition.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
-                    }
+                    androidx.compose.material3.Switch(
+                        checked = plugin.enabled,
+                        onCheckedChange = { viewModel.setPluginEnabled(plugin.definition.id, it) }
+                    )
                     IconButton(onClick = { viewModel.movePlugin(plugin.definition.id, -1) }) {
                         Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = "Move up")
                     }
