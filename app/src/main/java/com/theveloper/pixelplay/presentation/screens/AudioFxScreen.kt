@@ -63,14 +63,9 @@ import kotlin.math.roundToInt
 @Composable
 fun AudioFxScreen(
     navController: NavController,
-    playerViewModel: PlayerViewModel = hiltViewModel(),
     audioFxViewModel: AudioFxViewModel = hiltViewModel()
 ) {
-    val onBack: () -> Unit = {
-        playerViewModel.expandPlayerSheet()
-        navController.popBackStack()
-    }
-    BackHandler(onBack = onBack)
+    val onBack: () -> Unit = { navController.popBackStack() }
     val uiState by audioFxViewModel.uiState.collectAsStateWithLifecycle()
 
     // Hide the system navigation bar only while this screen is visible; always
