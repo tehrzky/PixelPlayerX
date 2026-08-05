@@ -30,6 +30,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -184,7 +185,8 @@ fun AudioFxScreen(
                     PluginCard(
                         model = pluginModel,
                         onEnabledChange = { pluginManagerViewModel.setPluginEnabled(pluginModel.definition.id, it) },
-                        onParamChange = { key, value -> pluginManagerViewModel.setPluginParam(pluginModel.definition.id, key, value) }
+                        onParamChangeLive = { key, value -> pluginManagerViewModel.setPluginParamLive(pluginModel.definition.id, key, value) },
+                        onParamChangeFinished = { key, value -> pluginManagerViewModel.setPluginParam(pluginModel.definition.id, key, value) }
                     )
                 }
             }
@@ -201,12 +203,12 @@ fun AudioFxScreen(
                 )
             }
             item(key = "lofi_slider") {
-                SliderSettingsItem(
+                DebouncedSlider(
                     label = stringResource(R.string.audio_fx_intensity_label),
-                    value = uiState.lofiIntensity.toFloat(),
+                    externalValue = uiState.lofiIntensity.toFloat(),
                     valueRange = 0f..100f,
-                    steps = 0,
-                    onValueChange = { audioFxViewModel.setLofiIntensity(it.toInt()) },
+                    onValueChangeLive = { audioFxViewModel.setLofiIntensityLive(it.toInt()) },
+                    onValueChangeFinished = { audioFxViewModel.setLofiIntensity(it.toInt()) },
                     valueText = { value -> "${value.toInt()}%" },
                     enabled = uiState.lofiEnabled
                 )
@@ -222,12 +224,12 @@ fun AudioFxScreen(
                 )
             }
             item(key = "radio_slider") {
-                SliderSettingsItem(
+                DebouncedSlider(
                     label = stringResource(R.string.audio_fx_intensity_label),
-                    value = uiState.radioIntensity.toFloat(),
+                    externalValue = uiState.radioIntensity.toFloat(),
                     valueRange = 0f..100f,
-                    steps = 0,
-                    onValueChange = { audioFxViewModel.setRadioIntensity(it.toInt()) },
+                    onValueChangeLive = { audioFxViewModel.setRadioIntensityLive(it.toInt()) },
+                    onValueChangeFinished = { audioFxViewModel.setRadioIntensity(it.toInt()) },
                     valueText = { value -> "${value.toInt()}%" },
                     enabled = uiState.radioEnabled
                 )
@@ -243,12 +245,12 @@ fun AudioFxScreen(
                 )
             }
             item(key = "wow_flutter_slider") {
-                SliderSettingsItem(
+                DebouncedSlider(
                     label = stringResource(R.string.audio_fx_intensity_label),
-                    value = uiState.wowFlutterIntensity.toFloat(),
+                    externalValue = uiState.wowFlutterIntensity.toFloat(),
                     valueRange = 0f..100f,
-                    steps = 0,
-                    onValueChange = { audioFxViewModel.setWowFlutterIntensity(it.toInt()) },
+                    onValueChangeLive = { audioFxViewModel.setWowFlutterIntensityLive(it.toInt()) },
+                    onValueChangeFinished = { audioFxViewModel.setWowFlutterIntensity(it.toInt()) },
                     valueText = { value -> "${value.toInt()}%" },
                     enabled = uiState.wowFlutterEnabled
                 )
@@ -264,12 +266,12 @@ fun AudioFxScreen(
                 )
             }
             item(key = "reverb_slider") {
-                SliderSettingsItem(
+                DebouncedSlider(
                     label = stringResource(R.string.audio_fx_intensity_label),
-                    value = uiState.reverbIntensity.toFloat(),
+                    externalValue = uiState.reverbIntensity.toFloat(),
                     valueRange = 0f..100f,
-                    steps = 0,
-                    onValueChange = { audioFxViewModel.setReverbIntensity(it.toInt()) },
+                    onValueChangeLive = { audioFxViewModel.setReverbIntensityLive(it.toInt()) },
+                    onValueChangeFinished = { audioFxViewModel.setReverbIntensity(it.toInt()) },
                     valueText = { value -> "${value.toInt()}%" },
                     enabled = uiState.reverbEnabled
                 )
@@ -290,7 +292,8 @@ fun AudioFxScreen(
 private fun PluginCard(
     model: PluginUiModel,
     onEnabledChange: (Boolean) -> Unit,
-    onParamChange: (String, Float) -> Unit
+    onParamChangeLive: (String, Float) -> Unit,
+    onParamChangeFinished: (String, Float) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
@@ -305,19 +308,69 @@ private fun PluginCard(
             )
             model.definition.chain.forEach { node ->
                 node.params.forEach { (key, paramDef) ->
-                    SliderSettingsItem(
+                    DebouncedSlider(
                         label = paramDef.label,
-                        value = model.paramValues[key] ?: paramDef.default,
+                        externalValue = model.paramValues[key] ?: paramDef.default,
                         valueRange = paramDef.min..paramDef.max,
-                        steps = 0,
-                        onValueChange = { onParamChange(key, it) },
-                        valueText = { v -> if (paramDef.unit.isNotBlank()) "${v.roundToInt()}${paramDef.unit}" else "${v.roundToInt()}" },
+                        onValueChangeLive = { onParamChangeLive(key, it) },
+                        onValueChangeFinished = { onParamChangeFinished(key, it) },
+                        valueText = { v -> if (paramDef.unit.isNotBlank()) "${formatValue(v)}${paramDef.unit}" else formatValue(v) },
                         enabled = model.enabled
                     )
                 }
             }
         }
     }
+}
+
+/** Whole numbers show as "8", small/fractional ranges (rate, formant, etc.)
+ * show one decimal place so precision isn't lost on e.g. a 0.1–10 range. */
+private fun formatValue(v: Float): String =
+    if (v == v.roundToInt().toFloat()) v.roundToInt().toString() else "%.1f".format(v)
+
+/**
+ * Local drag state for instant visual feedback + a "live" callback fired on every
+ * drag tick (writes straight to the audio-thread state holder, cheap) + a
+ * "finished" callback fired once on release (the expensive DataStore write).
+ * Ranges of 20 or fewer distinct integer steps snap to whole numbers instead of
+ * continuous drag, per the "small value ranges should tick-snap" request.
+ */
+@Composable
+private fun DebouncedSlider(
+    label: String,
+    externalValue: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    onValueChangeLive: (Float) -> Unit,
+    onValueChangeFinished: (Float) -> Unit,
+    valueText: (Float) -> String,
+    enabled: Boolean
+) {
+    var isDragging by remember { mutableStateOf(false) }
+    var localValue by remember { mutableFloatStateOf(externalValue) }
+    LaunchedEffect(externalValue) {
+        if (!isDragging) localValue = externalValue
+    }
+
+    val rangeSize = valueRange.endInclusive - valueRange.start
+    val steps = if (rangeSize in 1f..20f) rangeSize.roundToInt() - 1 else 0
+
+    SliderSettingsItem(
+        label = label,
+        value = localValue,
+        valueRange = valueRange,
+        steps = steps,
+        onValueChange = {
+            isDragging = true
+            localValue = it
+            onValueChangeLive(it)
+        },
+        onValueChangeFinished = {
+            isDragging = false
+            onValueChangeFinished(localValue)
+        },
+        valueText = valueText,
+        enabled = enabled
+    )
 }
 
 @Composable
