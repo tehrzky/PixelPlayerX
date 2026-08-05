@@ -23,7 +23,7 @@ class PluginRepository @Inject constructor(
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val pluginsDir: File get() = File(context.filesDir, "audio_fx_plugins").apply { mkdirs() }
-    private val supportedNodeTypes = setOf("bandpass", "distortion", "noise", "wobble", "reverb")
+    private val supportedNodeTypes = setOf("bandpass", "distortion", "noise", "wobble", "reverb", "bitcrusher", "delay", "compressor", "pitchshift")
 
     private object Keys {
         val PLUGIN_ORDER = stringPreferencesKey("audio_fx_plugin_order")
