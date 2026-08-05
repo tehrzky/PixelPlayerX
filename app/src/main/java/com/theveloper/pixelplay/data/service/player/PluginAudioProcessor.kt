@@ -36,6 +36,10 @@ class PluginAudioProcessor(
             "noise" -> NoiseNode()
             "wobble" -> WobbleNode()
             "reverb" -> ReverbNode()
+            "bitcrusher" -> BitcrusherNode()
+            "delay" -> DelayNode()
+            "compressor" -> CompressorNode()
+            "pitchshift" -> PitchShiftNode()
             else -> DistortionNode()
         }
         nodeDef to node
