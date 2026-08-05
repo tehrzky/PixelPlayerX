@@ -1,12 +1,8 @@
 package com.theveloper.pixelplay.presentation.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -21,7 +17,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,9 +32,9 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -55,9 +51,11 @@ import androidx.navigation.NavController
 import com.theveloper.pixelplay.R
 import com.theveloper.pixelplay.presentation.components.CollapsibleCommonTopBar
 import com.theveloper.pixelplay.presentation.components.MiniPlayerHeight
+import com.theveloper.pixelplay.presentation.navigation.Screen
 import com.theveloper.pixelplay.presentation.navigation.navigateSafely
 import com.theveloper.pixelplay.presentation.viewmodel.AudioFxViewModel
-import com.theveloper.pixelplay.presentation.viewmodel.PlayerViewModel
+import com.theveloper.pixelplay.presentation.viewmodel.PluginManagerViewModel
+import com.theveloper.pixelplay.presentation.viewmodel.PluginUiModel
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -65,13 +63,13 @@ import kotlin.math.roundToInt
 @Composable
 fun AudioFxScreen(
     navController: NavController,
-    audioFxViewModel: AudioFxViewModel = hiltViewModel()
+    audioFxViewModel: AudioFxViewModel = hiltViewModel(),
+    pluginManagerViewModel: PluginManagerViewModel = hiltViewModel()
 ) {
     val onBack: () -> Unit = { navController.popBackStack() }
     val uiState by audioFxViewModel.uiState.collectAsStateWithLifecycle()
+    val pluginState by pluginManagerViewModel.uiState.collectAsStateWithLifecycle()
 
-    // Hide the system navigation bar only while this screen is visible; always
-    // restore it on exit so it doesn't leak into the rest of the app.
     val view = LocalView.current
     DisposableEffect(Unit) {
         val window = (view.context as? android.app.Activity)?.window
@@ -106,19 +104,15 @@ fun AudioFxScreen(
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 val delta = available.y
                 val isScrollingDown = delta < 0
-
                 if (!isScrollingDown && (lazyListState.firstVisibleItemIndex > 0 || lazyListState.firstVisibleItemScrollOffset > 0)) {
                     return Offset.Zero
                 }
-
                 val previousHeight = topBarHeight.value
                 val newHeight = (previousHeight + delta).coerceIn(minTopBarHeightPx, maxTopBarHeightPx)
                 val consumed = newHeight - previousHeight
-
                 if (consumed.roundToInt() != 0) {
                     coroutineScope.launch { topBarHeight.snapTo(newHeight) }
                 }
-
                 val canConsumeScroll = !(isScrollingDown && newHeight == minTopBarHeightPx)
                 return if (canConsumeScroll) Offset(0f, consumed) else Offset.Zero
             }
@@ -129,9 +123,7 @@ fun AudioFxScreen(
         if (!lazyListState.isScrollInProgress) {
             val shouldExpand = topBarHeight.value > (minTopBarHeightPx + maxTopBarHeightPx) / 2
             val canExpand = lazyListState.firstVisibleItemIndex == 0 && lazyListState.firstVisibleItemScrollOffset == 0
-
             val targetValue = if (shouldExpand && canExpand) maxTopBarHeightPx else minTopBarHeightPx
-
             if (topBarHeight.value != targetValue) {
                 coroutineScope.launch {
                     topBarHeight.animateTo(targetValue, spring(stiffness = Spring.StiffnessMedium))
@@ -140,11 +132,7 @@ fun AudioFxScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .nestedScroll(nestedScrollConnection)
-            .fillMaxSize()
-    ) {
+    Box(modifier = Modifier.nestedScroll(nestedScrollConnection).fillMaxSize()) {
         val currentTopBarHeightDp = with(density) { topBarHeight.value.toDp() }
 
         LazyColumn(
@@ -157,30 +145,50 @@ fun AudioFxScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            item(key = "info_banner") {
+            item(key = "manage_plugins_link") {
                 Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    ),
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    onClick = { navController.navigateSafely(Screen.PluginManager.route) },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                 ) {
                     Row(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Info,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                        Text(
-                            text = stringResource(R.string.audio_fx_active_note),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Extension, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Manage Plugins", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
+                        Text("Import your own →", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                 }
             }
+
+            item(key = "plugins_header") { AudioFxSectionHeader("Plugins") }
+
+            if (pluginState.plugins.isEmpty()) {
+                item(key = "no_plugins") {
+                    Text(
+                        "No Plugins Installed. Import one from Manage Plugins above.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                }
+            } else {
+                items(pluginState.plugins, key = { it.definition.id }) { pluginModel ->
+                    PluginCard(
+                        model = pluginModel,
+                        onEnabledChange = { pluginManagerViewModel.setPluginEnabled(pluginModel.definition.id, it) },
+                        onParamChange = { key, value -> pluginManagerViewModel.setPluginParam(pluginModel.definition.id, key, value) }
+                    )
+                }
+            }
+
+            item(key = "builtin_header") { AudioFxSectionHeader("Built-in Effects") }
 
             item(key = "lofi_header") { AudioFxSectionHeader(stringResource(R.string.audio_fx_lofi_title)) }
             item(key = "lofi_toggle") {
@@ -254,23 +262,6 @@ fun AudioFxScreen(
                     onCheckedChange = audioFxViewModel::setReverbEnabled
                 )
             }
-            item(key = "plugins_link") {
-                androidx.compose.material3.Card(
-                    modifier = Modifier
-                        .padding(top = 12.dp)
-                        .fillMaxWidth(),
-                    onClick = { navController.navigateSafely(com.theveloper.pixelplay.presentation.navigation.Screen.PluginManager.route) }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                    ) {
-                        Text("Manage Plugins", style = MaterialTheme.typography.titleMedium)
-                        Text("Import your own effects →", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
             item(key = "reverb_slider") {
                 SliderSettingsItem(
                     label = stringResource(R.string.audio_fx_intensity_label),
@@ -291,6 +282,40 @@ fun AudioFxScreen(
             onBackClick = onBack,
             collapsedTitleStartPadding = 72.dp
         )
+    }
+}
+
+@Composable
+private fun PluginCard(
+    model: PluginUiModel,
+    onEnabledChange: (Boolean) -> Unit,
+    onParamChange: (String, Float) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        androidx.compose.foundation.layout.Column(modifier = Modifier.padding(vertical = 8.dp)) {
+            SwitchSettingItem(
+                title = model.definition.name,
+                subtitle = model.definition.description,
+                checked = model.enabled,
+                onCheckedChange = onEnabledChange
+            )
+            model.definition.chain.forEach { node ->
+                node.params.forEach { (key, paramDef) ->
+                    SliderSettingsItem(
+                        label = paramDef.label,
+                        value = model.paramValues[key] ?: paramDef.default,
+                        valueRange = paramDef.min..paramDef.max,
+                        steps = 0,
+                        onValueChange = { onParamChange(key, it) },
+                        valueText = { v -> if (paramDef.unit.isNotBlank()) "${v.roundToInt()}${paramDef.unit}" else "${v.roundToInt()}" },
+                        enabled = model.enabled
+                    )
+                }
+            }
+        }
     }
 }
 
