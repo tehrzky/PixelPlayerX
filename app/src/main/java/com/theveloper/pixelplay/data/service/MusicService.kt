@@ -159,6 +159,10 @@ class MusicService : MediaLibraryService() {
     @Inject
     lateinit var audioFxStateHolder: AudioFxStateHolder
     @Inject
+    lateinit var pluginRepository: com.theveloper.pixelplay.data.plugin.PluginRepository
+    @Inject
+    lateinit var pluginStateHolder: com.theveloper.pixelplay.data.service.player.PluginStateHolder
+    @Inject
     lateinit var themePreferencesRepository: ThemePreferencesRepository
     @Inject
     lateinit var equalizerManager: EqualizerManager
@@ -553,6 +557,32 @@ class MusicService : MediaLibraryService() {
                     audioFxStateHolder.reverbEnabled = enabled
                     audioFxStateHolder.reverbIntensity = intensity
                 }
+        }
+        serviceScope.launch {
+            // Load installed plugins ordered by user preference, and prime live state
+            // for each one's enabled flag and every declared param — same cold-start
+            // priming pattern as the built-in effects above.
+            pluginRepository.pluginOrderFlow.collect { orderedIds ->
+                val installed = pluginRepository.listInstalledPlugins().associateBy { it.id }
+                val ordered = orderedIds.mapNotNull { installed[it] }
+                pluginStateHolder.activePlugins = ordered
+                ordered.forEach { def ->
+                    serviceScope.launch {
+                        pluginRepository.pluginEnabledFlow(def.id).collect { enabled ->
+                            pluginStateHolder.enabledMap[def.id] = enabled
+                        }
+                    }
+                    def.chain.forEach { node ->
+                        node.params.forEach { (key, paramDef) ->
+                            serviceScope.launch {
+                                pluginRepository.pluginParamFlow(def.id, key, paramDef.default).collect { value ->
+                                    pluginStateHolder.paramValues["${def.id}:$key"] = value
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         serviceScope.launch {
             // Re-apply ReplayGain whenever the player is rebuilt (Hi-Fi mode toggle, the
