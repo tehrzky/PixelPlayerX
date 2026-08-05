@@ -468,6 +468,15 @@ fun AppNavigation(
                 }
             }
             composable(
+                Screen.PluginManager.route,
+            ) {
+                ScreenWrapper(navController = navController, playerViewModel = playerViewModel, animatedVisibilityScope = this) {
+                    com.theveloper.pixelplay.presentation.screens.PluginManagerScreen(
+                        navController = navController
+                    )
+                }
+            }
+            composable(
                 Screen.DeviceCapabilities.route,
             ) {
                 ScreenWrapper(navController = navController, playerViewModel = playerViewModel, animatedVisibilityScope = this) {
