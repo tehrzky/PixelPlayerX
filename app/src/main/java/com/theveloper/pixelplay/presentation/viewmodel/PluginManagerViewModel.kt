@@ -8,11 +8,18 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class PluginUiModel(
+    val definition: PluginDefinition,
+    val enabled: Boolean = true,
+    val paramValues: Map<String, Float> = emptyMap()
+)
+
 data class PluginManagerUiState(
-    val plugins: List<PluginDefinition> = emptyList(),
+    val plugins: List<PluginUiModel> = emptyList(),
     val importError: String? = null
 )
 
@@ -24,18 +31,59 @@ class PluginManagerViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(PluginManagerUiState())
     val uiState: StateFlow<PluginManagerUiState> = _uiState.asStateFlow()
 
-    init { refresh() }
+    init { observePlugins() }
 
-    private fun refresh() {
+    private fun observePlugins() {
         viewModelScope.launch {
-            val orderedIds = pluginRepository.pluginOrderFlow
-            val installed = pluginRepository.listInstalledPlugins().associateBy { it.id }
-            orderedIds.collect { ids ->
-                val ordered = ids.mapNotNull { installed[it] }
-                val unordered = installed.values.filter { it.id !in ids }
-                _uiState.update { it.copy(plugins = ordered + unordered) }
+            pluginRepository.pluginOrderFlow.collect { orderedIds ->
+                val installed = pluginRepository.listInstalledPlugins().associateBy { it.id }
+                val ordered = orderedIds.mapNotNull { installed[it] }
+
+                // Seed immediately with defaults so the UI isn't blank while the
+                // per-param DataStore flows below are still warming up.
+                _uiState.update { state ->
+                    state.copy(plugins = ordered.map { def ->
+                        PluginUiModel(
+                            definition = def,
+                            enabled = true,
+                            paramValues = def.chain.flatMap { it.params.entries }
+                                .associate { it.key to it.value.default }
+                        )
+                    })
+                }
+
+                ordered.forEach { def ->
+                    launch {
+                        pluginRepository.pluginEnabledFlow(def.id).collect { enabled ->
+                            updatePlugin(def.id) { it.copy(enabled = enabled) }
+                        }
+                    }
+                    def.chain.forEach { node ->
+                        node.params.forEach { (key, paramDef) ->
+                            launch {
+                                pluginRepository.pluginParamFlow(def.id, key, paramDef.default).collect { value ->
+                                    updatePlugin(def.id) { it.copy(paramValues = it.paramValues + (key to value)) }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+
+    private fun updatePlugin(id: String, transform: (PluginUiModel) -> PluginUiModel) {
+        _uiState.update { state ->
+            state.copy(plugins = state.plugins.map { if (it.definition.id == id) transform(it) else it })
+        }
+    }
+
+    fun setPluginEnabled(pluginId: String, enabled: Boolean) {
+        viewModelScope.launch { pluginRepository.setPluginEnabled(pluginId, enabled) }
+    }
+
+    fun setPluginParam(pluginId: String, key: String, value: Float) {
+        viewModelScope.launch { pluginRepository.setPluginParam(pluginId, key, value) }
     }
 
     fun importPlugin(rawJson: String) {
@@ -43,7 +91,6 @@ class PluginManagerViewModel @Inject constructor(
             try {
                 pluginRepository.importPlugin(rawJson)
                 _uiState.update { it.copy(importError = null) }
-                reloadList()
             } catch (e: IllegalArgumentException) {
                 _uiState.update { it.copy(importError = e.message) }
             }
@@ -51,42 +98,22 @@ class PluginManagerViewModel @Inject constructor(
     }
 
     fun deletePlugin(pluginId: String) {
-        viewModelScope.launch {
-            pluginRepository.deletePlugin(pluginId)
-            reloadList()
-        }
+        viewModelScope.launch { pluginRepository.deletePlugin(pluginId) }
     }
 
     fun movePlugin(pluginId: String, delta: Int) {
         viewModelScope.launch {
-            val current = _uiState.value.plugins.map { it.id }.toMutableList()
+            val current = _uiState.value.plugins.map { it.definition.id }.toMutableList()
             val index = current.indexOf(pluginId)
             val newIndex = (index + delta).coerceIn(0, current.size - 1)
             if (index == -1 || index == newIndex) return@launch
             current.removeAt(index)
             current.add(newIndex, pluginId)
             pluginRepository.setPluginOrder(current)
-            reloadList()
         }
     }
 
     fun dismissError() {
         _uiState.update { it.copy(importError = null) }
     }
-
-    private fun reloadList() {
-        val installed = pluginRepository.listInstalledPlugins().associateBy { it.id }
-        viewModelScope.launch {
-            val ids = pluginRepository.pluginOrderFlow
-            ids.collect { orderedIds ->
-                val ordered = orderedIds.mapNotNull { installed[it] }
-                _uiState.update { it.copy(plugins = ordered) }
-                return@collect
-            }
-        }
-    }
-}
-
-private inline fun MutableStateFlow<PluginManagerUiState>.update(f: (PluginManagerUiState) -> PluginManagerUiState) {
-    value = f(value)
 }
