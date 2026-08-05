@@ -252,6 +252,23 @@ fun AudioFxScreen(
                     onCheckedChange = audioFxViewModel::setReverbEnabled
                 )
             }
+            item(key = "plugins_link") {
+                androidx.compose.material3.Card(
+                    modifier = Modifier
+                        .padding(top = 12.dp)
+                        .fillMaxWidth(),
+                    onClick = { navController.navigateSafely(com.theveloper.pixelplay.presentation.navigation.Screen.PluginManager.route) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Text("Manage Plugins", style = MaterialTheme.typography.titleMedium)
+                        Text("Import your own effects →", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
             item(key = "reverb_slider") {
                 SliderSettingsItem(
                     label = stringResource(R.string.audio_fx_intensity_label),
