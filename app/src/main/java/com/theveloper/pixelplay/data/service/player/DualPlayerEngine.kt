@@ -1069,7 +1069,7 @@ class DualPlayerEngine @Inject constructor(
                                 ReverbAudioProcessor(audioFxStateHolder)
                             ) + pluginStateHolder.activePlugins.map {
                                 PluginAudioProcessor(it, pluginStateHolder)
-                            }).toTypedArray()
+                            } + SpeakerProtectionAudioProcessor()).toTypedArray()
                         )
                     )
                     .build()
