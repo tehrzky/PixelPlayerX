@@ -91,7 +91,7 @@ fun PluginManagerScreen(
             }
         }
 
-        items(uiState.plugins, key = { it.id }) { plugin ->
+        items(uiState.plugins, key = { it.definition.id }) { plugin ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -102,18 +102,18 @@ fun PluginManagerScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(plugin.name, style = MaterialTheme.typography.titleMedium)
-                        if (plugin.description.isNotBlank()) {
-                            Text(plugin.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                        Text(plugin.definition.name, style = MaterialTheme.typography.titleMedium)
+                    if (plugin.definition.description.isNotBlank()) {
+                        Text(plugin.definition.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    IconButton(onClick = { viewModel.movePlugin(plugin.id, -1) }) {
+                    }
+                    IconButton(onClick = { viewModel.movePlugin(plugin.definition.id, -1) }) {
                         Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = "Move up")
                     }
-                    IconButton(onClick = { viewModel.movePlugin(plugin.id, 1) }) {
+                    IconButton(onClick = { viewModel.movePlugin(plugin.definition.id, 1) }) {
                         Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Move down")
                     }
-                    IconButton(onClick = { viewModel.deletePlugin(plugin.id) }) {
+                    IconButton(onClick = { viewModel.deletePlugin(plugin.definition.id) }) {
                         Icon(Icons.Rounded.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                     }
                 }
