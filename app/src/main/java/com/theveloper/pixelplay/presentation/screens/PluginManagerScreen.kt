@@ -72,7 +72,7 @@ fun PluginManagerScreen(
         item(key = "import_button") {
             Button(
                 onClick = { filePicker.launch(arrayOf("application/json", "text/*", "*/*")) },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
             ) {
                 Icon(Icons.Rounded.UploadFile, contentDescription = null)
                 androidx.compose.foundation.layout.Spacer(Modifier.padding(4.dp))
