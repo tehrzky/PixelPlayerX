@@ -638,6 +638,7 @@ class MainActivity : ComponentActivity() {
                 Screen.Experimental.route,
                 Screen.ArtistSettings.route,
                 Screen.Equalizer.route,
+                Screen.AudioFx.route,
                 Screen.SettingsCategory.route,
                 Screen.DelimiterConfig.route,
                 Screen.PaletteStyle.route,
