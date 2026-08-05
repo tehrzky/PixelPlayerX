@@ -25,9 +25,7 @@ internal data class SheetActionHandlers(
     val onLaunchSaveQueueOverlay: (List<Song>, String, (String, Set<String>) -> Unit) -> Unit,
     val onNavigateToAlbum: (Song) -> Unit,
     val onNavigateToArtist: (Song) -> Unit,
-    val onNavigateToGenre: (Song) -> Unit,
-    val onNavigateToEqualizer: () -> Unit,
-    val onNavigateToAudioFx: () -> Unit
+    val onNavigateToGenre: (Song) -> Unit
 )
 
 @OptIn(UnstableApi::class)
@@ -126,31 +124,6 @@ internal fun rememberSheetActionHandlers(
         }
     }
 
-    val onNavigateToEqualizer = remember(navController) {
-        {
-            scope.launch {
-                sheetMotionControllerState.value.snapCollapsed(sheetCollapsedTargetYState.value)
-            }
-            playerViewModelState.value.collapsePlayerSheet()
-            queueSheetControllerState.value.animate(false)
-            sheetModalOverlayControllerState.value.updateSelectedSongForInfo(null)
-            navController.navigateSafely(Screen.Equalizer.route)
-            Unit
-        }
-    }
-    val onNavigateToAudioFx = remember(navController) {
-        {
-            scope.launch {
-                sheetMotionControllerState.value.snapCollapsed(sheetCollapsedTargetYState.value)
-            }
-            playerViewModelState.value.collapsePlayerSheet()
-            queueSheetControllerState.value.animate(false)
-            sheetModalOverlayControllerState.value.updateSelectedSongForInfo(null)
-            navController.navigateSafely(Screen.AudioFx.route)
-            Unit
-        }
-    }
-
     return SheetActionHandlers(
         openQueueSheet = openQueueSheet,
         animateQueueSheet = animateQueueSheet,
@@ -161,8 +134,6 @@ internal fun rememberSheetActionHandlers(
         onLaunchSaveQueueOverlay = onLaunchSaveQueueOverlay,
         onNavigateToAlbum = onNavigateToAlbum,
         onNavigateToArtist = onNavigateToArtist,
-        onNavigateToGenre = onNavigateToGenre,
-        onNavigateToEqualizer = onNavigateToEqualizer,
-        onNavigateToAudioFx = onNavigateToAudioFx
+        onNavigateToGenre = onNavigateToGenre
     )
 }
