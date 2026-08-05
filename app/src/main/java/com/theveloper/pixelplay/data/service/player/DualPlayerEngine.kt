@@ -231,7 +231,8 @@ class DualPlayerEngine @Inject constructor(
     private val gdriveStreamProxy: com.theveloper.pixelplay.data.gdrive.GDriveStreamProxy,
     private val telegramCacheManager: com.theveloper.pixelplay.data.telegram.TelegramCacheManager,
     private val connectivityStateHolder: com.theveloper.pixelplay.presentation.viewmodel.ConnectivityStateHolder,
-    private val audioFxStateHolder: AudioFxStateHolder
+    private val audioFxStateHolder: AudioFxStateHolder,
+    private val pluginStateHolder: com.theveloper.pixelplay.data.service.player.PluginStateHolder
 ) {
     private companion object {
         private const val AUDIO_OFFLOAD_STALL_FALLBACK_MS = 4_000L
@@ -1059,12 +1060,16 @@ class DualPlayerEngine @Inject constructor(
                     .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
                     .setAudioProcessorChain(
                         DefaultAudioSink.DefaultAudioProcessorChain(
-                            HiResSampleRateCapAudioProcessor(),
-                            SurroundDownmixProcessor(),
-                            LofiAudioProcessor(audioFxStateHolder),
-                            RadioAudioProcessor(audioFxStateHolder),
-                            WowFlutterAudioProcessor(audioFxStateHolder),
-                            ReverbAudioProcessor(audioFxStateHolder)
+                            *(listOf(
+                                HiResSampleRateCapAudioProcessor(),
+                                SurroundDownmixProcessor(),
+                                LofiAudioProcessor(audioFxStateHolder),
+                                RadioAudioProcessor(audioFxStateHolder),
+                                WowFlutterAudioProcessor(audioFxStateHolder),
+                                ReverbAudioProcessor(audioFxStateHolder)
+                            ) + pluginStateHolder.activePlugins.map {
+                                PluginAudioProcessor(it, pluginStateHolder)
+                            }).toTypedArray()
                         )
                     )
                     .build()
