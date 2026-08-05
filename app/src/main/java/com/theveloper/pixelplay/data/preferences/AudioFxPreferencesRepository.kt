@@ -26,16 +26,16 @@ class AudioFxPreferencesRepository @Inject constructor(
     }
 
     val lofiEnabledFlow: Flow<Boolean> = dataStore.data.map { it[Keys.LOFI_ENABLED] ?: false }
-    val lofiIntensityFlow: Flow<Int> = dataStore.data.map { (it[Keys.LOFI_INTENSITY] ?: 40).coerceIn(0, 100) }
+    val lofiIntensityFlow: Flow<Int> = dataStore.data.map { (it[Keys.LOFI_INTENSITY] ?: 0).coerceIn(0, 100) }
 
     val radioEnabledFlow: Flow<Boolean> = dataStore.data.map { it[Keys.RADIO_ENABLED] ?: false }
-    val radioIntensityFlow: Flow<Int> = dataStore.data.map { (it[Keys.RADIO_INTENSITY] ?: 50).coerceIn(0, 100) }
+    val radioIntensityFlow: Flow<Int> = dataStore.data.map { (it[Keys.RADIO_INTENSITY] ?: 0).coerceIn(0, 100) }
 
     val wowFlutterEnabledFlow: Flow<Boolean> = dataStore.data.map { it[Keys.WOW_FLUTTER_ENABLED] ?: false }
-    val wowFlutterIntensityFlow: Flow<Int> = dataStore.data.map { (it[Keys.WOW_FLUTTER_INTENSITY] ?: 30).coerceIn(0, 100) }
+    val wowFlutterIntensityFlow: Flow<Int> = dataStore.data.map { (it[Keys.WOW_FLUTTER_INTENSITY] ?: 0).coerceIn(0, 100) }
 
     val reverbEnabledFlow: Flow<Boolean> = dataStore.data.map { it[Keys.REVERB_ENABLED] ?: false }
-    val reverbIntensityFlow: Flow<Int> = dataStore.data.map { (it[Keys.REVERB_INTENSITY] ?: 35).coerceIn(0, 100) }
+    val reverbIntensityFlow: Flow<Int> = dataStore.data.map { (it[Keys.REVERB_INTENSITY] ?: 0).coerceIn(0, 100) }
 
     suspend fun setLofiEnabled(enabled: Boolean) = dataStore.edit { it[Keys.LOFI_ENABLED] = enabled }
     suspend fun setLofiIntensity(value: Int) = dataStore.edit { it[Keys.LOFI_INTENSITY] = value.coerceIn(0, 100) }
