@@ -74,6 +74,11 @@ class AudioFxViewModel @Inject constructor(
         audioFxStateHolder.lofiEnabled = enabled
         viewModelScope.launch { audioFxPreferencesRepository.setLofiEnabled(enabled) }
     }
+    fun setLofiIntensityLive(value: Int) { audioFxStateHolder.lofiIntensity = value }
+    fun setRadioIntensityLive(value: Int) { audioFxStateHolder.radioIntensity = value }
+    fun setWowFlutterIntensityLive(value: Int) { audioFxStateHolder.wowFlutterIntensity = value }
+    fun setReverbIntensityLive(value: Int) { audioFxStateHolder.reverbIntensity = value }
+
     fun setLofiIntensity(value: Int) {
         audioFxStateHolder.lofiIntensity = value
         viewModelScope.launch { audioFxPreferencesRepository.setLofiIntensity(value) }
