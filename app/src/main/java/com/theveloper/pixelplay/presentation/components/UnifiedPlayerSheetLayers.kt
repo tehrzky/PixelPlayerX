@@ -69,9 +69,7 @@ internal fun BoxScope.UnifiedPlayerMiniAndFullLayers(
     onQueueDragStart: () -> Unit,
     onQueueDrag: (Float) -> Unit,
     onQueueRelease: (Float, Float) -> Unit,
-    onShowCastClicked: () -> Unit,
-    onShowEqualizerClicked: () -> Unit = {},
-    onShowAudioFxClicked: () -> Unit = {}
+    onShowCastClicked: () -> Unit
 ) {
     currentSong?.let { currentSongNonNull ->
         miniPlayerScheme?.let { readyScheme ->
@@ -257,9 +255,7 @@ internal fun BoxScope.UnifiedPlayerMiniAndFullLayers(
                         onShowCastClicked = onShowCastClicked,
                         onShuffleToggle = onShuffleToggle,
                         onRepeatToggle = onRepeatToggle,
-                        onFavoriteToggle = onFavoriteToggle,
-                        onShowEqualizerClicked = onShowEqualizerClicked,
-                        onShowAudioFxClicked = onShowAudioFxClicked
+                        onFavoriteToggle = onFavoriteToggle
                     )
                 }
             }
