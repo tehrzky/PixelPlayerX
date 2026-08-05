@@ -25,7 +25,8 @@ data class PluginManagerUiState(
 
 @HiltViewModel
 class PluginManagerViewModel @Inject constructor(
-    private val pluginRepository: PluginRepository
+    private val pluginRepository: PluginRepository,
+    private val pluginStateHolder: com.theveloper.pixelplay.data.service.player.PluginStateHolder
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PluginManagerUiState())
@@ -80,6 +81,10 @@ class PluginManagerViewModel @Inject constructor(
 
     fun setPluginEnabled(pluginId: String, enabled: Boolean) {
         viewModelScope.launch { pluginRepository.setPluginEnabled(pluginId, enabled) }
+    }
+
+    fun setPluginParamLive(pluginId: String, key: String, value: Float) {
+        pluginStateHolder.paramValues["$pluginId:$key"] = value
     }
 
     fun setPluginParam(pluginId: String, key: String, value: Float) {
