@@ -463,8 +463,7 @@ fun AppNavigation(
             ) {
                 ScreenWrapper(navController = navController, playerViewModel = playerViewModel, animatedVisibilityScope = this) {
                     com.theveloper.pixelplay.presentation.screens.AudioFxScreen(
-                        navController = navController,
-                        playerViewModel = playerViewModel
+                        navController = navController
                     )
                 }
             }
