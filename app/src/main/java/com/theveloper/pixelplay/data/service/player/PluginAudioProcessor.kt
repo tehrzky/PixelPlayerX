@@ -10,14 +10,8 @@ import com.theveloper.pixelplay.data.plugin.PluginNodeDef
 import timber.log.Timber
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.pow
 
-/**
- * Executes one imported plugin's DSP chain. Built fresh per ExoPlayer instance
- * (never shared between the two crossfading players — a shared-singleton
- * processor caused a real race condition we found in a comparison branch, so
- * this deliberately avoids that). Wrapped in try/catch so a bad plugin file
- * can't kill playback, same as the built-in effects.
- */
 @UnstableApi
 class PluginAudioProcessor(
     private val definition: PluginDefinition,
@@ -43,6 +37,15 @@ class PluginAudioProcessor(
             else -> DistortionNode()
         }
         nodeDef to node
+    }
+
+    // (nodeIndex, paramKey) -> (macroId, weight)
+    private val macroBindingsByNodeParam: Map<Pair<Int, String>, Pair<String, Float>> = buildMap {
+        definition.macros.forEach { macro ->
+            macro.bindings.forEach { binding ->
+                put(binding.nodeIndex to binding.param, macro.id to binding.weight)
+            }
+        }
     }
 
     override fun configure(inputAudioFormat: AudioFormat): AudioFormat {
@@ -71,20 +74,20 @@ class PluginAudioProcessor(
                 return
             }
 
+            val dryWetMix = state.masterValue(definition.id, "dryWetMix", definition.master.dryWetMix).coerceIn(0f, 100f) / 100f
+            val outputGainDb = state.masterValue(definition.id, "outputGainDb", definition.master.outputGainDb)
+            val gainLinear = 10f.pow(outputGainDb / 20f)
+
             if (inputFormat.encoding == C.ENCODING_PCM_FLOAT) {
                 val frameCount = inputBuffer.remaining() / Float.SIZE_BYTES
                 outputBuffer = ensureOutputBuffer(frameCount * Float.SIZE_BYTES)
                 val floatIn = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asFloatBuffer()
                 var ch = 0
                 repeat(frameCount) {
-                    var sample = floatIn.get()
-                    val frameStart = ch == 0
-                    for ((nodeDef, node) in nodes) {
-                        sample = node.process(sample, ch, frameStart) { key, fallback ->
-                            state.paramValue(definition.id, key, nodeDef.params[key]?.default ?: fallback)
-                        }
-                    }
-                    outputBuffer.putFloat(sample.coerceIn(-1f, 1f))
+                    val dry = floatIn.get()
+                    val wet = runChain(dry, ch, ch == 0)
+                    val mixed = (dry * (1f - dryWetMix) + wet * dryWetMix) * gainLinear
+                    outputBuffer.putFloat(mixed.coerceIn(-1f, 1f))
                     ch = (ch + 1) % channelCount
                 }
                 inputBuffer.position(inputBuffer.limit())
@@ -94,14 +97,10 @@ class PluginAudioProcessor(
                 val shortIn = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer()
                 var ch = 0
                 repeat(frameCount) {
-                    var sample = shortIn.get() / 32768f
-                    val frameStart = ch == 0
-                    for ((nodeDef, node) in nodes) {
-                        sample = node.process(sample, ch, frameStart) { key, fallback ->
-                            state.paramValue(definition.id, key, nodeDef.params[key]?.default ?: fallback)
-                        }
-                    }
-                    val out = (sample.coerceIn(-1f, 1f) * 32767f).toInt()
+                    val dry = shortIn.get() / 32768f
+                    val wet = runChain(dry, ch, ch == 0)
+                    val mixed = (dry * (1f - dryWetMix) + wet * dryWetMix) * gainLinear
+                    val out = (mixed.coerceIn(-1f, 1f) * 32767f).toInt()
                         .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
                     outputBuffer.putShort(out.toShort())
                     ch = (ch + 1) % channelCount
@@ -117,6 +116,30 @@ class PluginAudioProcessor(
                 outputBuffer.flip()
             }
         }
+    }
+
+    private fun runChain(inputSample: Float, ch: Int, frameStart: Boolean): Float {
+        var sample = inputSample
+        nodes.forEachIndexed { nodeIndex, (nodeDef, node) ->
+            val nodeId = nodeDef.effectiveId(nodeIndex)
+            if (!state.isNodeEnabled(definition.id, nodeId)) return@forEachIndexed
+            sample = node.process(sample, ch, frameStart) { key, fallback ->
+                val paramDef = nodeDef.params[key]
+                val rawOverride = state.paramValues["${definition.id}:$key"]
+                val macroBinding = macroBindingsByNodeParam[nodeIndex to key]
+                when {
+                    rawOverride != null -> rawOverride
+                    macroBinding != null && paramDef != null -> {
+                        val (macroId, weight) = macroBinding
+                        val macroVal = state.macroValue(definition.id, macroId, 50f).coerceIn(0f, 100f)
+                        (paramDef.min + (paramDef.max - paramDef.min) * (macroVal / 100f) * weight)
+                            .coerceIn(paramDef.min, paramDef.max)
+                    }
+                    else -> paramDef?.default ?: fallback
+                }
+            }
+        }
+        return sample
     }
 
     private fun ensureOutputBuffer(requiredCapacity: Int): ByteBuffer {
