@@ -43,6 +43,8 @@ class PluginAudioProcessor(
             "gate" -> GateNode()
             "chorus" -> ChorusNode()
             "tape_saturator" -> TapeSaturatorNode()
+            "dc_blocker" -> DcBlockerNode()
+            "vinyl_dropout" -> VinylDropoutNode()
             else -> DistortionNode()
         }
         nodeDef to node
