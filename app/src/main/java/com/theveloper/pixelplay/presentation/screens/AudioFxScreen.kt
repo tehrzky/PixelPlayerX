@@ -190,6 +190,8 @@ fun AudioFxScreen(
                         onMacroChangeLive = { macroId, value -> pluginManagerViewModel.setMacroLive(pluginModel.definition.id, macroId, value) },
                         onMacroChangeFinished = { macroId, value -> pluginManagerViewModel.setMacro(pluginModel.definition.id, macroId, value) },
                         onNodeBypassChange = { nodeId, enabled -> pluginManagerViewModel.setNodeEnabled(pluginModel.definition.id, nodeId, enabled) },
+                        onMasterChangeLive = { key, value -> pluginManagerViewModel.setMasterLive(pluginModel.definition.id, key, value) },
+                        onMasterChangeFinished = { key, value -> pluginManagerViewModel.setMaster(pluginModel.definition.id, key, value) },
                         onResetToDefaults = { pluginManagerViewModel.resetToDefaults(pluginModel.definition.id) }
                     )
                 }
@@ -301,6 +303,8 @@ private fun PluginCard(
     onMacroChangeLive: (String, Float) -> Unit,
     onMacroChangeFinished: (String, Float) -> Unit,
     onNodeBypassChange: (String, Boolean) -> Unit,
+    onMasterChangeLive: (String, Float) -> Unit,
+    onMasterChangeFinished: (String, Float) -> Unit,
     onResetToDefaults: () -> Unit
 ) {
     var showAdvanced by remember { mutableStateOf(false) }
@@ -329,6 +333,25 @@ private fun PluginCard(
                 subtitle = model.definition.description,
                 checked = model.enabled,
                 onCheckedChange = onEnabledChange
+            )
+
+            DebouncedSlider(
+                label = "Mix",
+                externalValue = model.dryWetMix,
+                valueRange = 0f..100f,
+                onValueChangeLive = { onMasterChangeLive("dryWetMix", it) },
+                onValueChangeFinished = { onMasterChangeFinished("dryWetMix", it) },
+                valueText = { v -> "${v.roundToInt()}%" },
+                enabled = model.enabled
+            )
+            DebouncedSlider(
+                label = "Output Gain",
+                externalValue = model.outputGainDb,
+                valueRange = -12f..12f,
+                onValueChangeLive = { onMasterChangeLive("outputGainDb", it) },
+                onValueChangeFinished = { onMasterChangeFinished("outputGainDb", it) },
+                valueText = { v -> "${if (v >= 0) "+" else ""}${formatValue(v)}dB" },
+                enabled = model.enabled
             )
 
             if (hasMacros) {
