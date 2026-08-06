@@ -33,7 +33,16 @@ class PluginAudioProcessor(
             "bitcrusher" -> BitcrusherNode()
             "delay" -> DelayNode()
             "compressor" -> CompressorNode()
-            "pitchshift" -> PitchShiftNode()
+            "pitchshift", "pitch_shifter" -> PitchShiftNode()
+            "gain" -> GainNode()
+            "mono_utility" -> MonoUtilityNode()
+            "stereo_widener" -> StereoWidenerNode()
+            "parametric_eq" -> ParametricEqNode()
+            "shelving_eq" -> ShelvingEqNode()
+            "limiter" -> LimiterNode()
+            "gate" -> GateNode()
+            "chorus" -> ChorusNode()
+            "tape_saturator" -> TapeSaturatorNode()
             else -> DistortionNode()
         }
         nodeDef to node
