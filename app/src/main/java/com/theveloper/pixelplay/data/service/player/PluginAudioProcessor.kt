@@ -93,6 +93,34 @@ class PluginAudioProcessor(
             val outputGainDb = state.masterValue(definition.id, "outputGainDb", definition.master.outputGainDb)
             val gainLinear = 10f.pow(outputGainDb / 20f)
 
+            // Resolve every node's params ONCE for this whole buffer — not per
+            // sample. This is the fix for the per-sample lambda-allocation bug
+            // that was causing heavy GC churn/heat: reading a plain map per
+            // sample is free; building a fresh closure per sample was not.
+            val nodeParamSnapshots: List<Map<String, Float>> = nodes.mapIndexed { nodeIndex, (nodeDef, _) ->
+                if (nodeDef.params.isEmpty()) emptyMap() else {
+                    val snapshot = HashMap<String, Float>(nodeDef.params.size)
+                    nodeDef.params.forEach { (key, paramDef) ->
+                        val fullKey = "${definition.id}:$key"
+                        val macroBinding = macroBindingsByNodeParam[nodeIndex to key]
+                        snapshot[key] = when {
+                            fullKey in state.paramOverridden -> state.paramValues[fullKey] ?: paramDef.default
+                            macroBinding != null -> {
+                                val (macroId, weight) = macroBinding
+                                val macroVal = state.macroValue(definition.id, macroId, 50f).coerceIn(0f, 100f)
+                                (paramDef.min + (paramDef.max - paramDef.min) * (macroVal / 100f) * weight)
+                                    .coerceIn(paramDef.min, paramDef.max)
+                            }
+                            else -> state.paramValues[fullKey] ?: paramDef.default
+                        }
+                    }
+                    snapshot
+                }
+            }
+            val nodeEnabledSnapshot: List<Boolean> = nodes.mapIndexed { i, (nodeDef, _) ->
+                state.isNodeEnabled(definition.id, nodeDef.effectiveId(i))
+            }
+
             if (inputFormat.encoding == C.ENCODING_PCM_FLOAT) {
                 val frameCount = inputBuffer.remaining() / Float.SIZE_BYTES
                 outputBuffer = ensureOutputBuffer(frameCount * Float.SIZE_BYTES)
@@ -100,7 +128,7 @@ class PluginAudioProcessor(
                 var ch = 0
                 repeat(frameCount) {
                     val dry = floatIn.get()
-                    val wet = runChain(dry, ch, ch == 0)
+                    val wet = runChain(dry, ch, ch == 0, nodeParamSnapshots, nodeEnabledSnapshot)
                     val mixed = (dry * (1f - dryWetMix) + wet * dryWetMix) * gainLinear
                     outputBuffer.putFloat(mixed.coerceIn(-1f, 1f))
                     ch = (ch + 1) % channelCount
@@ -113,7 +141,7 @@ class PluginAudioProcessor(
                 var ch = 0
                 repeat(frameCount) {
                     val dry = shortIn.get() / 32768f
-                    val wet = runChain(dry, ch, ch == 0)
+                    val wet = runChain(dry, ch, ch == 0, nodeParamSnapshots, nodeEnabledSnapshot)
                     val mixed = (dry * (1f - dryWetMix) + wet * dryWetMix) * gainLinear
                     val out = (mixed.coerceIn(-1f, 1f) * 32767f).toInt()
                         .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
@@ -133,26 +161,17 @@ class PluginAudioProcessor(
         }
     }
 
-    private fun runChain(inputSample: Float, ch: Int, frameStart: Boolean): Float {
+    private fun runChain(
+        inputSample: Float,
+        ch: Int,
+        frameStart: Boolean,
+        snapshots: List<Map<String, Float>>,
+        enabled: List<Boolean>
+    ): Float {
         var sample = inputSample
-        nodes.forEachIndexed { nodeIndex, (nodeDef, node) ->
-            val nodeId = nodeDef.effectiveId(nodeIndex)
-            if (!state.isNodeEnabled(definition.id, nodeId)) return@forEachIndexed
-            sample = node.process(sample, ch, frameStart) { key, fallback ->
-                val paramDef = nodeDef.params[key]
-                val fullKey = "${definition.id}:$key"
-                val macroBinding = macroBindingsByNodeParam[nodeIndex to key]
-                when {
-                    fullKey in state.paramOverridden -> state.paramValues[fullKey] ?: paramDef?.default ?: fallback
-                    macroBinding != null && paramDef != null -> {
-                        val (macroId, weight) = macroBinding
-                        val macroVal = state.macroValue(definition.id, macroId, 50f).coerceIn(0f, 100f)
-                        (paramDef.min + (paramDef.max - paramDef.min) * (macroVal / 100f) * weight)
-                            .coerceIn(paramDef.min, paramDef.max)
-                    }
-                    else -> state.paramValues[fullKey] ?: paramDef?.default ?: fallback
-                }
-            }
+        for (nodeIndex in nodes.indices) {
+            if (!enabled[nodeIndex]) continue
+            sample = nodes[nodeIndex].second.process(sample, ch, frameStart, snapshots[nodeIndex])
         }
         return sample
     }
