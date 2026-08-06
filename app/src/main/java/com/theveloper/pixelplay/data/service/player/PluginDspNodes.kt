@@ -127,24 +127,33 @@ class WobbleNode : PluginDspNode {
     private var writePos = 0
     private var phase = 0.0
     private var sampleRate = 44100
+    private val random = Random(1)
+    private var randomWalk = FloatArray(0)
 
     override fun configure(channelCount: Int, sampleRate: Int) {
         ring = Array(channelCount) { FloatArray(ringSize) }
         writePos = 0
         phase = 0.0
         this.sampleRate = sampleRate
+        randomWalk = FloatArray(channelCount)
     }
 
     override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
         val rateHz = param("rateHz", 0.8f).coerceIn(0.05f, 20f)
         val depth = param("depth", 0f).coerceIn(0f, 100f) / 100f
+        val randomness = param("randomness", 0f).coerceIn(0f, 100f) / 100f
         val depthSamples = depth * 0.004f * sampleRate
         val baseDelay = 20f + depthSamples
 
         val buf = ring[channel]
         buf[writePos] = sample
 
-        val lfo = sin(2.0 * Math.PI * rateHz * phase).toFloat()
+        // Slow leaky-integrator random walk: bounded, organic drift instead of a
+        // perfectly periodic sine. Blended in by `randomness` — 0 = pure classic
+        // wow/flutter sine, 1 = fully mechanical/imperfect drift.
+        randomWalk[channel] = (randomWalk[channel] + (random.nextFloat() * 2f - 1f) * 0.01f) * 0.995f
+        val periodicLfo = (sin(2.0 * Math.PI * rateHz * phase) * 0.7 + sin(2.0 * Math.PI * rateHz * 8.1 * phase) * 0.3).toFloat()
+        val lfo = periodicLfo * (1f - randomness) + randomWalk[channel].coerceIn(-1f, 1f) * randomness
         val delaySamples = baseDelay + lfo * depthSamples
         var readPos = writePos - delaySamples
         while (readPos < 0f) readPos += ringSize
@@ -599,5 +608,52 @@ class TapeSaturatorNode : PluginDspNode {
         val biased = sample + asym
         val shaped = tanh(biased * g) - tanh(asym * g)
         return (shaped / tanh(g)).coerceIn(-1f, 1f)
+    }
+}
+
+/** Standard one-pole DC-blocking IIR filter. Cheap, always-safe to add after
+ * any heavy nonlinear node (bitcrusher, saturator, extreme pitch shift) that
+ * might introduce DC bias — prevents silent headroom loss downstream. */
+class DcBlockerNode : PluginDspNode {
+    private var xPrev = FloatArray(0)
+    private var yPrev = FloatArray(0)
+    override fun configure(channelCount: Int, sampleRate: Int) {
+        xPrev = FloatArray(channelCount)
+        yPrev = FloatArray(channelCount)
+    }
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val r = 0.995f
+        val y = sample - xPrev[channel] + r * yPrev[channel]
+        xPrev[channel] = sample
+        yPrev[channel] = y
+        return y.coerceIn(-1f, 1f)
+    }
+}
+
+/** Periodic rhythmic dropout/bump locked to a rotation rate (e.g. 33/45 RPM) —
+ * distinct from NoiseNode's crackle, which is intentionally non-periodic. This
+ * is the "warped record" / "needle catches the same spot every rotation" sound. */
+class VinylDropoutNode : PluginDspNode {
+    private var sampleRate = 44100
+    private var phaseSamples = FloatArray(0)
+    private val random = Random(2)
+    override fun configure(channelCount: Int, sampleRate: Int) {
+        this.sampleRate = sampleRate
+        phaseSamples = FloatArray(channelCount)
+    }
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val rpm = param("rpm", 33f).coerceIn(1f, 100f)
+        val dropoutAmount = param("dropoutAmount", 30f).coerceIn(0f, 100f) / 100f
+        val periodSamples = (60f / rpm) * sampleRate
+
+        phaseSamples[channel] += 1f
+        if (phaseSamples[channel] >= periodSamples) phaseSamples[channel] -= periodSamples
+
+        val bumpWindow = periodSamples * 0.002f
+        val jitter = (random.nextFloat() - 0.5f) * periodSamples * 0.01f
+        val distToBump = kotlin.math.abs(phaseSamples[channel] - periodSamples / 2f - jitter)
+        return if (dropoutAmount > 0f && distToBump < bumpWindow) {
+            sample * (1f - dropoutAmount) + (random.nextFloat() * 2f - 1f) * dropoutAmount * 0.4f
+        } else sample
     }
 }
