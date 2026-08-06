@@ -31,7 +31,8 @@ data class PluginManagerUiState(
 @HiltViewModel
 class PluginManagerViewModel @Inject constructor(
     private val pluginRepository: PluginRepository,
-    private val pluginStateHolder: PluginStateHolder
+    private val pluginStateHolder: PluginStateHolder,
+    private val dualPlayerEngine: com.theveloper.pixelplay.data.service.player.DualPlayerEngine
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PluginManagerUiState())
@@ -109,7 +110,10 @@ class PluginManagerViewModel @Inject constructor(
     }
 
     fun setPluginEnabled(pluginId: String, enabled: Boolean) {
-        viewModelScope.launch { pluginRepository.setPluginEnabled(pluginId, enabled) }
+        viewModelScope.launch {
+            pluginRepository.setPluginEnabled(pluginId, enabled)
+            dualPlayerEngine.refreshAudioFxPluginChain()
+        }
     }
 
     fun setPluginParamLive(pluginId: String, key: String, value: Float) {
@@ -144,6 +148,7 @@ class PluginManagerViewModel @Inject constructor(
             try {
                 pluginRepository.importPlugin(rawJson)
                 _uiState.update { it.copy(importError = null) }
+                dualPlayerEngine.refreshAudioFxPluginChain()
             } catch (e: IllegalArgumentException) {
                 _uiState.update { it.copy(importError = e.message) }
             }
@@ -151,7 +156,10 @@ class PluginManagerViewModel @Inject constructor(
     }
 
     fun deletePlugin(pluginId: String) {
-        viewModelScope.launch { pluginRepository.deletePlugin(pluginId) }
+        viewModelScope.launch {
+            pluginRepository.deletePlugin(pluginId)
+            dualPlayerEngine.refreshAudioFxPluginChain()
+        }
     }
 
     fun movePlugin(pluginId: String, delta: Int) {
