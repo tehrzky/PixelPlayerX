@@ -338,3 +338,225 @@ class PitchShiftNode : PluginDspNode {
         return out.coerceIn(-1f, 1f)
     }
 }
+
+class GainNode : PluginDspNode {
+    override fun configure(channelCount: Int, sampleRate: Int) {}
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val gainDb = param("gainDb", 0f).coerceIn(-24f, 24f)
+        return (sample * 10f.pow(gainDb / 20f)).coerceIn(-1f, 1f)
+    }
+}
+
+/** Stereo-to-mono fold. Note: this streaming per-sample architecture processes
+ * one channel at a time with no lookahead into the other channel of the same
+ * frame, so this uses the *previous* frame's channel values for blending — a
+ * one-sample (≈0.02ms) latency that's inaudible but worth documenting. */
+class MonoUtilityNode : PluginDspNode {
+    private var lastChannelSamples = FloatArray(0)
+    private var channelCount = 1
+    override fun configure(channelCount: Int, sampleRate: Int) {
+        this.channelCount = channelCount
+        lastChannelSamples = FloatArray(channelCount)
+    }
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val monoAmount = param("monoAmount", 100f).coerceIn(0f, 100f) / 100f
+        if (channelCount < 2) return sample
+        val prevAvg = lastChannelSamples.average().toFloat()
+        lastChannelSamples[channel] = sample
+        return sample * (1f - monoAmount) + prevAvg * monoAmount
+    }
+}
+
+/** Mid-side stereo widener. Same one-frame-latency caveat as MonoUtilityNode
+ * for reading the "other" channel. */
+class StereoWidenerNode : PluginDspNode {
+    private var lastChannelSamples = FloatArray(0)
+    private var channelCount = 1
+    override fun configure(channelCount: Int, sampleRate: Int) {
+        this.channelCount = channelCount
+        lastChannelSamples = FloatArray(channelCount)
+    }
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val width = param("width", 50f).coerceIn(0f, 100f) / 100f * 2f
+        if (channelCount < 2) return sample
+        val other = lastChannelSamples[(channel + 1) % channelCount]
+        lastChannelSamples[channel] = sample
+        val mid = (sample + other) / 2f
+        val side = (sample - other) / 2f
+        val widened = if (channel == 0) mid + side * width else mid - side * width
+        return widened.coerceIn(-1f, 1f)
+    }
+}
+
+/** Single-band peaking EQ (RBJ biquad cookbook formula). */
+class ParametricEqNode : PluginDspNode {
+    private var x1 = FloatArray(0); private var x2 = FloatArray(0)
+    private var y1 = FloatArray(0); private var y2 = FloatArray(0)
+    private var sampleRate = 44100
+    override fun configure(channelCount: Int, sampleRate: Int) {
+        x1 = FloatArray(channelCount); x2 = FloatArray(channelCount)
+        y1 = FloatArray(channelCount); y2 = FloatArray(channelCount)
+        this.sampleRate = sampleRate
+    }
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val freq = param("freqHz", 1000f).coerceIn(20f, 20000f)
+        val gainDb = param("gainDb", 0f).coerceIn(-24f, 24f)
+        val q = param("q", 1f).coerceIn(0.1f, 10f)
+
+        val a = 10f.pow(gainDb / 40f)
+        val w0 = (2.0 * Math.PI * freq / sampleRate).toFloat()
+        val cosw0 = kotlin.math.cos(w0)
+        val sinw0 = kotlin.math.sin(w0)
+        val alpha = sinw0 / (2f * q)
+
+        val b0 = 1f + alpha * a
+        val b1 = -2f * cosw0
+        val b2 = 1f - alpha * a
+        val a0 = 1f + alpha / a
+        val a1 = -2f * cosw0
+        val a2 = 1f - alpha / a
+
+        val out = (b0 / a0) * sample + (b1 / a0) * x1[channel] + (b2 / a0) * x2[channel] -
+            (a1 / a0) * y1[channel] - (a2 / a0) * y2[channel]
+
+        x2[channel] = x1[channel]; x1[channel] = sample
+        y2[channel] = y1[channel]; y1[channel] = out
+        return out.coerceIn(-1f, 1f)
+    }
+}
+
+/** Combined low-shelf + high-shelf via one-pole taps, simpler and cheaper than
+ * true RBJ shelving biquads. Good enough for tonal shaping, not mastering-grade. */
+class ShelvingEqNode : PluginDspNode {
+    private var lowLpState = FloatArray(0)
+    private var hpIn = FloatArray(0); private var hpOut = FloatArray(0)
+    private var sampleRate = 44100
+    override fun configure(channelCount: Int, sampleRate: Int) {
+        lowLpState = FloatArray(channelCount)
+        hpIn = FloatArray(channelCount); hpOut = FloatArray(channelCount)
+        this.sampleRate = sampleRate
+    }
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val lowFreq = param("lowShelfHz", 200f).coerceIn(20f, 2000f)
+        val lowGainDb = param("lowShelfGainDb", 0f).coerceIn(-24f, 24f)
+        val highFreq = param("highShelfHz", 4000f).coerceIn(1000f, 20000f)
+        val highGainDb = param("highShelfGainDb", 0f).coerceIn(-24f, 24f)
+
+        val dtL = 1f / sampleRate
+        val rcL = 1f / (2f * Math.PI.toFloat() * lowFreq)
+        val aL = dtL / (rcL + dtL)
+        lowLpState[channel] = lowLpState[channel] + aL * (sample - lowLpState[channel])
+        val lowGainLin = 10f.pow(lowGainDb / 20f) - 1f
+        val afterLow = sample + lowLpState[channel] * lowGainLin
+
+        val dtH = 1f / sampleRate
+        val rcH = 1f / (2f * Math.PI.toFloat() * highFreq)
+        val aH = rcH / (rcH + dtH)
+        val hp = aH * (hpOut[channel] + afterLow - hpIn[channel])
+        hpIn[channel] = afterLow
+        hpOut[channel] = hp
+        val highGainLin = 10f.pow(highGainDb / 20f) - 1f
+        return (afterLow + hp * highGainLin).coerceIn(-1f, 1f)
+    }
+}
+
+class LimiterNode : PluginDspNode {
+    private var gainState = FloatArray(0)
+    private var sampleRate = 44100
+    override fun configure(channelCount: Int, sampleRate: Int) {
+        gainState = FloatArray(channelCount) { 1f }
+        this.sampleRate = sampleRate
+    }
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val ceilingDb = param("ceilingDb", -1f).coerceIn(-24f, 0f)
+        val releaseMs = param("releaseMs", 50f).coerceIn(5f, 500f)
+        val ceiling = 10f.pow(ceilingDb / 20f)
+        val absVal = abs(sample)
+        val target = if (absVal > ceiling) ceiling / absVal else 1f
+        val releaseCoeff = exp(-1f / (releaseMs / 1000f * sampleRate))
+        gainState[channel] = if (target < gainState[channel]) target else gainState[channel] * releaseCoeff + target * (1f - releaseCoeff)
+        return (sample * gainState[channel]).coerceIn(-1f, 1f)
+    }
+}
+
+class GateNode : PluginDspNode {
+    private var envelope = FloatArray(0)
+    private var gainState = FloatArray(0)
+    private var sampleRate = 44100
+    override fun configure(channelCount: Int, sampleRate: Int) {
+        envelope = FloatArray(channelCount)
+        gainState = FloatArray(channelCount) { 1f }
+        this.sampleRate = sampleRate
+    }
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val thresholdDb = param("thresholdDb", -40f).coerceIn(-80f, 0f)
+        val attackMs = param("attackMs", 5f).coerceIn(0.1f, 100f)
+        val releaseMs = param("releaseMs", 150f).coerceIn(5f, 1000f)
+
+        val absVal = abs(sample)
+        val attackCoeff = exp(-1f / (attackMs / 1000f * sampleRate))
+        val releaseCoeff = exp(-1f / (releaseMs / 1000f * sampleRate))
+        val coeff = if (absVal > envelope[channel]) attackCoeff else releaseCoeff
+        envelope[channel] = coeff * envelope[channel] + (1f - coeff) * absVal
+
+        val envDb = 20f * log10(envelope[channel].coerceAtLeast(1e-6f))
+        val target = if (envDb > thresholdDb) 1f else 0f
+        val gCoeff = if (target < gainState[channel]) attackCoeff else releaseCoeff
+        gainState[channel] = gCoeff * gainState[channel] + (1f - gCoeff) * target
+        return sample * gainState[channel]
+    }
+}
+
+class ChorusNode : PluginDspNode {
+    private val ringSize = 8192
+    private var ring: Array<FloatArray> = arrayOf()
+    private var writePos = 0
+    private var phase = 0.0
+    private var sampleRate = 44100
+    override fun configure(channelCount: Int, sampleRate: Int) {
+        ring = Array(channelCount) { FloatArray(ringSize) }
+        writePos = 0; phase = 0.0
+        this.sampleRate = sampleRate
+    }
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val rateHz = param("rateHz", 1.5f).coerceIn(0.1f, 8f)
+        val depth = param("depth", 40f).coerceIn(0f, 100f) / 100f
+        val mix = param("mix", 50f).coerceIn(0f, 100f) / 100f
+
+        val buf = ring[channel]
+        buf[writePos] = sample
+
+        val depthSamples = depth * 0.015f * sampleRate
+        val baseDelay = 15f + depthSamples
+        val lfo = sin(2.0 * Math.PI * rateHz * phase).toFloat()
+        val delaySamples = baseDelay + lfo * depthSamples
+        var readPos = writePos - delaySamples
+        while (readPos < 0f) readPos += ringSize
+        val i0 = floor(readPos).toInt() % ringSize
+        val i1 = (i0 + 1) % ringSize
+        val frac = readPos - floor(readPos)
+        val delayed = buf[i0] * (1f - frac) + buf[i1] * frac
+
+        if (frameStart) {
+            phase += 1.0 / sampleRate
+            writePos = (writePos + 1) % ringSize
+        }
+        return (sample * (1f - mix) + delayed * mix).coerceIn(-1f, 1f)
+    }
+}
+
+/** Asymmetric soft clipping for tube/tape-style warmth — distinct from
+ * DistortionNode, which bitcrushes (quantizes) rather than saturating. */
+class TapeSaturatorNode : PluginDspNode {
+    override fun configure(channelCount: Int, sampleRate: Int) {}
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val drive = param("drive", 20f).coerceIn(0f, 100f)
+        val warmth = param("warmth", 30f).coerceIn(0f, 100f)
+        if (drive == 0f) return sample
+        val g = 1f + drive / 100f * 5f
+        val asym = warmth / 100f * 0.3f
+        val biased = sample + asym
+        val shaped = tanh(biased * g) - tanh(asym * g)
+        return (shaped / tanh(g)).coerceIn(-1f, 1f)
+    }
+}
