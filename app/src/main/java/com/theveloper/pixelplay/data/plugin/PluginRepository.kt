@@ -27,7 +27,7 @@ class PluginRepository @Inject constructor(
         "bandpass", "distortion", "noise", "wobble", "reverb", "bitcrusher", "delay",
         "compressor", "pitchshift", "pitch_shifter", "gain", "mono_utility",
         "stereo_widener", "parametric_eq", "shelving_eq", "limiter", "gate",
-        "chorus", "tape_saturator"
+        "chorus", "tape_saturator", "dc_blocker", "vinyl_dropout"
     )
     // Kept for future validation clarity; actual routing lives in PluginAudioProcessor's
     // `when`. Adding a type here requires also adding the matching DSP node class and
