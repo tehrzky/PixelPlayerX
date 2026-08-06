@@ -1202,6 +1202,13 @@ class DualPlayerEngine @Inject constructor(
         )
     }
 
+    /** Rebuilds the player pipeline so newly imported/deleted/toggled plugins take
+     * effect immediately, instead of only on the next natural rebuild (Hi-Fi toggle,
+     * song transition). Reuses the exact same rebuild path Hi-Fi mode already uses. */
+    fun refreshAudioFxPluginChain() {
+        rebuildPlayersPreservingMasterState("Audio FX plugin list changed")
+    }
+
     fun setHiFiMode(enabled: Boolean) {
         if (hiFiModeEnabled == enabled) return
         if (enabled && !HiFiCapabilityChecker.isSupported()) {
