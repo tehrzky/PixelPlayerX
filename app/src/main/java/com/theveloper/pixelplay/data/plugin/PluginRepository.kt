@@ -24,6 +24,9 @@ class PluginRepository @Inject constructor(
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val pluginsDir: File get() = File(context.filesDir, "audio_fx_plugins").apply { mkdirs() }
     private val supportedNodeTypes = setOf("bandpass", "distortion", "noise", "wobble", "reverb", "bitcrusher", "delay", "compressor", "pitchshift")
+    // Kept for future validation clarity; actual routing lives in PluginAudioProcessor's
+    // `when`. Adding a type here requires also adding the matching DSP node class and
+    // wiring it into that `when` block.
 
     private object Keys {
         val PLUGIN_ORDER = stringPreferencesKey("audio_fx_plugin_order")
@@ -53,7 +56,34 @@ class PluginRepository @Inject constructor(
             val order = (prefs[Keys.PLUGIN_ORDER] ?: "").split(",").filter { it.isNotBlank() }
             if (def.id !in order) prefs[Keys.PLUGIN_ORDER] = (order + def.id).joinToString(",")
         }
+        // Newly imported plugins start disabled — avoid an unexpected volume/
+        // processing shift on import until the user explicitly turns it on.
+        setPluginEnabled(def.id, false)
         return def
+    }
+
+    fun macroFlow(pluginId: String, macroId: String, default: Float): Flow<Float> = dataStore.data.map { prefs ->
+        prefs[floatPreferencesKey("plugin_$pluginId:macro:$macroId")] ?: default
+    }
+
+    suspend fun setMacro(pluginId: String, macroId: String, value: Float) {
+        dataStore.edit { prefs -> prefs[floatPreferencesKey("plugin_$pluginId:macro:$macroId")] = value }
+    }
+
+    fun nodeEnabledFlow(pluginId: String, nodeId: String): Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[booleanPreferencesKey("plugin_$pluginId:node:$nodeId:enabled")] ?: true
+    }
+
+    suspend fun setNodeEnabled(pluginId: String, nodeId: String, enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[booleanPreferencesKey("plugin_$pluginId:node:$nodeId:enabled")] = enabled }
+    }
+
+    fun masterFlow(pluginId: String, key: String, default: Float): Flow<Float> = dataStore.data.map { prefs ->
+        prefs[floatPreferencesKey("plugin_$pluginId:master:$key")] ?: default
+    }
+
+    suspend fun setMaster(pluginId: String, key: String, value: Float) {
+        dataStore.edit { prefs -> prefs[floatPreferencesKey("plugin_$pluginId:master:$key")] = value }
     }
 
     fun listInstalledPlugins(): List<PluginDefinition> {
