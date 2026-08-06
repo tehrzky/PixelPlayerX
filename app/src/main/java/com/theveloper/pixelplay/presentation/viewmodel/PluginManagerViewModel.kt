@@ -18,7 +18,9 @@ data class PluginUiModel(
     val enabled: Boolean = true,
     val paramValues: Map<String, Float> = emptyMap(),
     val macroValues: Map<String, Float> = emptyMap(),
-    val nodeEnabled: Map<String, Boolean> = emptyMap()
+    val nodeEnabled: Map<String, Boolean> = emptyMap(),
+    val outputGainDb: Float = 0f,
+    val dryWetMix: Float = 100f
 )
 
 data class PluginManagerUiState(
@@ -50,7 +52,9 @@ class PluginManagerViewModel @Inject constructor(
                             enabled = true,
                             paramValues = def.chain.flatMap { it.params.entries }.associate { it.key to it.value.default },
                             macroValues = def.macros.associate { it.id to it.default },
-                            nodeEnabled = def.chain.mapIndexed { i, n -> n.effectiveId(i) to true }.toMap()
+                            nodeEnabled = def.chain.mapIndexed { i, n -> n.effectiveId(i) to true }.toMap(),
+                            outputGainDb = def.master.outputGainDb,
+                            dryWetMix = def.master.dryWetMix
                         )
                     })
                 }
@@ -83,6 +87,16 @@ class PluginManagerViewModel @Inject constructor(
                             }
                         }
                     }
+                    launch {
+                        pluginRepository.masterFlow(def.id, "outputGainDb", def.master.outputGainDb).collect { value ->
+                            updatePlugin(def.id) { it.copy(outputGainDb = value) }
+                        }
+                    }
+                    launch {
+                        pluginRepository.masterFlow(def.id, "dryWetMix", def.master.dryWetMix).collect { value ->
+                            updatePlugin(def.id) { it.copy(dryWetMix = value) }
+                        }
+                    }
                 }
             }
         }
@@ -110,6 +124,13 @@ class PluginManagerViewModel @Inject constructor(
     }
     fun setMacro(pluginId: String, macroId: String, value: Float) {
         viewModelScope.launch { pluginRepository.setMacro(pluginId, macroId, value) }
+    }
+
+    fun setMasterLive(pluginId: String, key: String, value: Float) {
+        pluginStateHolder.masterOverrides["$pluginId:$key"] = value
+    }
+    fun setMaster(pluginId: String, key: String, value: Float) {
+        viewModelScope.launch { pluginRepository.setMaster(pluginId, key, value) }
     }
 
     fun setNodeEnabled(pluginId: String, nodeId: String, enabled: Boolean) {
@@ -160,6 +181,10 @@ class PluginManagerViewModel @Inject constructor(
                 pluginStateHolder.nodeEnabledMap["$pluginId:$nodeId"] = true
                 pluginRepository.setNodeEnabled(pluginId, nodeId, true)
             }
+            pluginStateHolder.masterOverrides.remove("$pluginId:outputGainDb")
+            pluginStateHolder.masterOverrides.remove("$pluginId:dryWetMix")
+            pluginRepository.setMaster(pluginId, "outputGainDb", plugin.definition.master.outputGainDb)
+            pluginRepository.setMaster(pluginId, "dryWetMix", plugin.definition.master.dryWetMix)
         }
     }
 
