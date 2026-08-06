@@ -12,6 +12,7 @@ class PluginStateHolder @Inject constructor() {
     val enabledMap = ConcurrentHashMap<String, Boolean>()       // pluginId -> master enabled
     val paramValues = ConcurrentHashMap<String, Float>()        // "pluginId:paramKey" -> raw override
     val macroValues = ConcurrentHashMap<String, Float>()        // "pluginId:macroId" -> value
+    val paramOverridden: MutableSet<String> = ConcurrentHashMap.newKeySet() // "pluginId:paramKey" explicitly touched by user this session
     val nodeEnabledMap = ConcurrentHashMap<String, Boolean>()   // "pluginId:nodeId" -> enabled (bypass)
     val masterOverrides = ConcurrentHashMap<String, Float>()    // "pluginId:outputGainDb" / "pluginId:dryWetMix"
 
