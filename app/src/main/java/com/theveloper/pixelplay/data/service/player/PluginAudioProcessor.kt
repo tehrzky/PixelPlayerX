@@ -136,17 +136,17 @@ class PluginAudioProcessor(
             if (!state.isNodeEnabled(definition.id, nodeId)) return@forEachIndexed
             sample = node.process(sample, ch, frameStart) { key, fallback ->
                 val paramDef = nodeDef.params[key]
-                val rawOverride = state.paramValues["${definition.id}:$key"]
+                val fullKey = "${definition.id}:$key"
                 val macroBinding = macroBindingsByNodeParam[nodeIndex to key]
                 when {
-                    rawOverride != null -> rawOverride
+                    fullKey in state.paramOverridden -> state.paramValues[fullKey] ?: paramDef?.default ?: fallback
                     macroBinding != null && paramDef != null -> {
                         val (macroId, weight) = macroBinding
                         val macroVal = state.macroValue(definition.id, macroId, 50f).coerceIn(0f, 100f)
                         (paramDef.min + (paramDef.max - paramDef.min) * (macroVal / 100f) * weight)
                             .coerceIn(paramDef.min, paramDef.max)
                     }
-                    else -> paramDef?.default ?: fallback
+                    else -> state.paramValues[fullKey] ?: paramDef?.default ?: fallback
                 }
             }
         }
