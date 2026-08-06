@@ -65,18 +65,59 @@ class DistortionNode : PluginDspNode {
     }
 }
 
+/** Vinyl surface noise, in two parts:
+ *  - Hiss: lightly lowpassed white noise (warmer than raw white noise —
+ *    real surface hiss isn't full-band static).
+ *  - Crackle: a genuine Poisson point process (exponentially distributed
+ *    inter-arrival gaps, not a fixed per-sample coin-flip), where each pop
+ *    is a short decaying transient with randomized loudness and length —
+ *    not a single hard click. This is what actually reads as "vinyl" rather
+ *    than "static": real needle pops have a tiny resonant tail. */
 class NoiseNode : PluginDspNode {
     private val random = Random(0)
-    override fun configure(channelCount: Int, sampleRate: Int) {}
+    private var hissLpState = FloatArray(0)
+    private var popCountdown = FloatArray(0)
+    private var popEnvelope = FloatArray(0)
+    private var popDecay = FloatArray(0)
+
+    override fun configure(channelCount: Int, sampleRate: Int) {
+        hissLpState = FloatArray(channelCount)
+        popCountdown = FloatArray(channelCount) { nextInterval(0.3f) }
+        popEnvelope = FloatArray(channelCount)
+        popDecay = FloatArray(channelCount)
+    }
 
     override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val hiss = param("hiss", 0f).coerceIn(0f, 100f) / 100f * 0.04f
+        val hiss = param("hiss", 0f).coerceIn(0f, 100f) / 100f
         val crackleDensity = param("crackleDensity", 0f).coerceIn(0f, 100f) / 100f
-        var out = sample + (random.nextFloat() * 2f - 1f) * hiss
-        if (crackleDensity > 0f && random.nextFloat() < crackleDensity * 0.0006f) {
-            out += (random.nextFloat() * 2f - 1f) * 0.6f
+        var out = sample
+
+        if (hiss > 0f) {
+            val raw = random.nextFloat() * 2f - 1f
+            hissLpState[channel] = hissLpState[channel] + 0.3f * (raw - hissLpState[channel])
+            out += hissLpState[channel] * hiss * 0.05f
+        }
+
+        if (crackleDensity > 0f) {
+            popCountdown[channel] -= 1f
+            if (popCountdown[channel] <= 0f) {
+                popEnvelope[channel] = 0.3f + random.nextFloat() * 0.7f
+                popDecay[channel] = 0.6f + random.nextFloat() * 0.3f
+                popCountdown[channel] = nextInterval(crackleDensity)
+            }
+            if (popEnvelope[channel] > 0.001f) {
+                val sign = if (random.nextBoolean()) 1f else -1f
+                out += sign * popEnvelope[channel] * (random.nextFloat() * 0.5f + 0.5f)
+                popEnvelope[channel] *= popDecay[channel]
+            }
         }
         return out.coerceIn(-1f, 1f)
+    }
+
+    private fun nextInterval(density: Float): Float {
+        val rate = (density * 0.008f).coerceAtLeast(0.00005f)
+        val u = random.nextFloat().coerceAtLeast(1e-6f)
+        return (-kotlin.math.ln(u) / rate).coerceIn(50f, 200000f)
     }
 }
 
