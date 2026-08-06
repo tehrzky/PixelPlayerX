@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.theveloper.pixelplay.data.plugin.PluginDefinition
 import com.theveloper.pixelplay.data.plugin.PluginRepository
+import com.theveloper.pixelplay.data.service.player.PluginStateHolder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,7 +16,9 @@ import javax.inject.Inject
 data class PluginUiModel(
     val definition: PluginDefinition,
     val enabled: Boolean = true,
-    val paramValues: Map<String, Float> = emptyMap()
+    val paramValues: Map<String, Float> = emptyMap(),
+    val macroValues: Map<String, Float> = emptyMap(),
+    val nodeEnabled: Map<String, Boolean> = emptyMap()
 )
 
 data class PluginManagerUiState(
@@ -26,7 +29,7 @@ data class PluginManagerUiState(
 @HiltViewModel
 class PluginManagerViewModel @Inject constructor(
     private val pluginRepository: PluginRepository,
-    private val pluginStateHolder: com.theveloper.pixelplay.data.service.player.PluginStateHolder
+    private val pluginStateHolder: PluginStateHolder
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PluginManagerUiState())
@@ -40,15 +43,14 @@ class PluginManagerViewModel @Inject constructor(
                 val installed = pluginRepository.listInstalledPlugins().associateBy { it.id }
                 val ordered = orderedIds.mapNotNull { installed[it] }
 
-                // Seed immediately with defaults so the UI isn't blank while the
-                // per-param DataStore flows below are still warming up.
                 _uiState.update { state ->
                     state.copy(plugins = ordered.map { def ->
                         PluginUiModel(
                             definition = def,
                             enabled = true,
-                            paramValues = def.chain.flatMap { it.params.entries }
-                                .associate { it.key to it.value.default }
+                            paramValues = def.chain.flatMap { it.params.entries }.associate { it.key to it.value.default },
+                            macroValues = def.macros.associate { it.id to it.default },
+                            nodeEnabled = def.chain.mapIndexed { i, n -> n.effectiveId(i) to true }.toMap()
                         )
                     })
                 }
@@ -59,12 +61,25 @@ class PluginManagerViewModel @Inject constructor(
                             updatePlugin(def.id) { it.copy(enabled = enabled) }
                         }
                     }
-                    def.chain.forEach { node ->
-                        node.params.forEach { (key, paramDef) ->
-                            launch {
-                                pluginRepository.pluginParamFlow(def.id, key, paramDef.default).collect { value ->
-                                    updatePlugin(def.id) { it.copy(paramValues = it.paramValues + (key to value)) }
-                                }
+                    def.chain.forEach { node -> node.params.forEach { (key, paramDef) ->
+                        launch {
+                            pluginRepository.pluginParamFlow(def.id, key, paramDef.default).collect { value ->
+                                updatePlugin(def.id) { it.copy(paramValues = it.paramValues + (key to value)) }
+                            }
+                        }
+                    } }
+                    def.macros.forEach { macro ->
+                        launch {
+                            pluginRepository.macroFlow(def.id, macro.id, macro.default).collect { value ->
+                                updatePlugin(def.id) { it.copy(macroValues = it.macroValues + (macro.id to value)) }
+                            }
+                        }
+                    }
+                    def.chain.forEachIndexed { i, node ->
+                        val nodeId = node.effectiveId(i)
+                        launch {
+                            pluginRepository.nodeEnabledFlow(def.id, nodeId).collect { enabled ->
+                                updatePlugin(def.id) { it.copy(nodeEnabled = it.nodeEnabled + (nodeId to enabled)) }
                             }
                         }
                     }
@@ -86,9 +101,20 @@ class PluginManagerViewModel @Inject constructor(
     fun setPluginParamLive(pluginId: String, key: String, value: Float) {
         pluginStateHolder.paramValues["$pluginId:$key"] = value
     }
-
     fun setPluginParam(pluginId: String, key: String, value: Float) {
         viewModelScope.launch { pluginRepository.setPluginParam(pluginId, key, value) }
+    }
+
+    fun setMacroLive(pluginId: String, macroId: String, value: Float) {
+        pluginStateHolder.macroValues["$pluginId:$macroId"] = value
+    }
+    fun setMacro(pluginId: String, macroId: String, value: Float) {
+        viewModelScope.launch { pluginRepository.setMacro(pluginId, macroId, value) }
+    }
+
+    fun setNodeEnabled(pluginId: String, nodeId: String, enabled: Boolean) {
+        pluginStateHolder.nodeEnabledMap["$pluginId:$nodeId"] = enabled
+        viewModelScope.launch { pluginRepository.setNodeEnabled(pluginId, nodeId, enabled) }
     }
 
     fun importPlugin(rawJson: String) {
@@ -115,6 +141,25 @@ class PluginManagerViewModel @Inject constructor(
             current.removeAt(index)
             current.add(newIndex, pluginId)
             pluginRepository.setPluginOrder(current)
+        }
+    }
+
+    fun resetToDefaults(pluginId: String) {
+        val plugin = _uiState.value.plugins.find { it.definition.id == pluginId } ?: return
+        viewModelScope.launch {
+            plugin.definition.chain.forEach { node -> node.params.forEach { (key, paramDef) ->
+                pluginStateHolder.paramValues.remove("$pluginId:$key")
+                pluginRepository.setPluginParam(pluginId, key, paramDef.default)
+            } }
+            plugin.definition.macros.forEach { macro ->
+                pluginStateHolder.macroValues["$pluginId:${macro.id}"] = macro.default
+                pluginRepository.setMacro(pluginId, macro.id, macro.default)
+            }
+            plugin.definition.chain.forEachIndexed { i, node ->
+                val nodeId = node.effectiveId(i)
+                pluginStateHolder.nodeEnabledMap["$pluginId:$nodeId"] = true
+                pluginRepository.setNodeEnabled(pluginId, nodeId, true)
+            }
         }
     }
 
