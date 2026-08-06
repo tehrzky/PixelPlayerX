@@ -23,7 +23,12 @@ class PluginRepository @Inject constructor(
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val pluginsDir: File get() = File(context.filesDir, "audio_fx_plugins").apply { mkdirs() }
-    private val supportedNodeTypes = setOf("bandpass", "distortion", "noise", "wobble", "reverb", "bitcrusher", "delay", "compressor", "pitchshift")
+    private val supportedNodeTypes = setOf(
+        "bandpass", "distortion", "noise", "wobble", "reverb", "bitcrusher", "delay",
+        "compressor", "pitchshift", "pitch_shifter", "gain", "mono_utility",
+        "stereo_widener", "parametric_eq", "shelving_eq", "limiter", "gate",
+        "chorus", "tape_saturator"
+    )
     // Kept for future validation clarity; actual routing lives in PluginAudioProcessor's
     // `when`. Adding a type here requires also adding the matching DSP node class and
     // wiring it into that `when` block.
