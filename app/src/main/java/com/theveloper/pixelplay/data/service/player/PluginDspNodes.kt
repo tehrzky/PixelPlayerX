@@ -6,6 +6,7 @@ import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.math.pow
 import kotlin.math.roundToInt
+import kotlin.math.sign
 import kotlin.math.sin
 import kotlin.math.tanh
 import kotlin.random.Random
@@ -655,5 +656,144 @@ class VinylDropoutNode : PluginDspNode {
         return if (dropoutAmount > 0f && distToBump < bumpWindow) {
             sample * (1f - dropoutAmount) + (random.nextFloat() * 2f - 1f) * dropoutAmount * 0.4f
         } else sample
+    }
+}
+
+/** True phaser: N cascaded first-order allpass stages with LFO-swept corner
+ * frequency, distinct from ChorusNode's delay-line modulation — no delay
+ * latency, gives the classic jet-sweep notch character. */
+class PhaserNode : PluginDspNode {
+    private val stageCount = 4
+    private var apState: Array<FloatArray> = arrayOf()
+    private var phase = 0.0
+    private var sampleRate = 44100
+    override fun configure(channelCount: Int, sampleRate: Int) {
+        apState = Array(channelCount) { FloatArray(stageCount) }
+        phase = 0.0
+        this.sampleRate = sampleRate
+    }
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val rateHz = param("rateHz", 0.5f).coerceIn(0.05f, 5f)
+        val depth = param("depth", 60f).coerceIn(0f, 100f) / 100f
+        val feedback = param("feedback", 30f).coerceIn(0f, 90f) / 100f
+        val mix = param("mix", 50f).coerceIn(0f, 100f) / 100f
+
+        val lfo = (sin(2.0 * Math.PI * rateHz * phase).toFloat() * 0.5f + 0.5f) * depth
+        val centerFreq = 400f + lfo * 2000f
+        val w = (2.0 * Math.PI * centerFreq / sampleRate).toFloat().coerceIn(0.01f, 3f)
+        val a = (1f - w) / (1f + w)
+
+        var x = sample + apState[channel][stageCount - 1] * feedback
+        for (s in 0 until stageCount) {
+            val prevState = apState[channel][s]
+            val y = -a * x + prevState
+            apState[channel][s] = x + a * y
+            x = y
+        }
+        if (frameStart) phase += 1.0 / sampleRate
+        return (sample * (1f - mix) + x * mix).coerceIn(-1f, 1f)
+    }
+}
+
+/** Harmonic exciter: generates new top-end harmonics from a high-passed copy
+ * of the signal, distinct from a shelf boost — it adds content rather than
+ * just amplifying whatever's already there (including existing hiss/noise). */
+class ExciterNode : PluginDspNode {
+    private var hpIn = FloatArray(0); private var hpOut = FloatArray(0)
+    private var sampleRate = 44100
+    override fun configure(channelCount: Int, sampleRate: Int) {
+        hpIn = FloatArray(channelCount); hpOut = FloatArray(channelCount)
+        this.sampleRate = sampleRate
+    }
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val freq = param("thresholdHz", 3000f).coerceIn(500f, 12000f)
+        val amount = param("amount", 30f).coerceIn(0f, 100f) / 100f
+        val mix = param("mix", 50f).coerceIn(0f, 100f) / 100f
+
+        val dt = 1f / sampleRate
+        val rc = 1f / (2f * Math.PI.toFloat() * freq)
+        val a = rc / (rc + dt)
+        val hp = a * (hpOut[channel] + sample - hpIn[channel])
+        hpIn[channel] = sample
+        hpOut[channel] = hp
+
+        val driven = hp * (1f + amount * 4f)
+        val harmonics = kotlin.math.sign(driven) * (kotlin.math.abs(driven).pow(0.7f)) - hp
+        return (sample + harmonics * mix).coerceIn(-1f, 1f)
+    }
+}
+
+/** Envelope-follower dynamic lowpass — auto-wah / "filter opens on transients." */
+class EnvelopeFollowerNode : PluginDspNode {
+    private var envelope = FloatArray(0)
+    private var lpState = FloatArray(0)
+    private var sampleRate = 44100
+    override fun configure(channelCount: Int, sampleRate: Int) {
+        envelope = FloatArray(channelCount)
+        lpState = FloatArray(channelCount)
+        this.sampleRate = sampleRate
+    }
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val sensitivity = param("sensitivity", 50f).coerceIn(0f, 100f) / 100f
+        val minFreq = param("minFreqHz", 300f).coerceIn(50f, 5000f)
+        val maxFreq = param("maxFreqHz", 4000f).coerceIn(500f, 18000f)
+        val attackMs = param("attackMs", 10f).coerceIn(0.5f, 100f)
+        val releaseMs = param("releaseMs", 150f).coerceIn(5f, 1000f)
+
+        val absVal = abs(sample)
+        val attackCoeff = exp(-1f / (attackMs / 1000f * sampleRate))
+        val releaseCoeff = exp(-1f / (releaseMs / 1000f * sampleRate))
+        val coeff = if (absVal > envelope[channel]) attackCoeff else releaseCoeff
+        envelope[channel] = coeff * envelope[channel] + (1f - coeff) * absVal
+
+        val cutoff = minFreq + (maxFreq - minFreq) * (envelope[channel] * sensitivity * 3f).coerceIn(0f, 1f)
+        val dt = 1f / sampleRate
+        val rc = 1f / (2f * Math.PI.toFloat() * cutoff)
+        val a = dt / (rc + dt)
+        lpState[channel] = lpState[channel] + a * (sample - lpState[channel])
+        return lpState[channel]
+    }
+}
+
+/** Frequency-conscious dynamics: compresses only a high sibilance band,
+ * leaving lows/mids untouched — cheaper than true multiband (no crossover
+ * network needed for a single detector band), covers the de-esser use case. */
+class DeEsserNode : PluginDspNode {
+    private var hpIn = FloatArray(0); private var hpOut = FloatArray(0)
+    private var envelope = FloatArray(0)
+    private var gainState = FloatArray(0)
+    private var sampleRate = 44100
+    override fun configure(channelCount: Int, sampleRate: Int) {
+        hpIn = FloatArray(channelCount); hpOut = FloatArray(channelCount)
+        envelope = FloatArray(channelCount)
+        gainState = FloatArray(channelCount) { 1f }
+        this.sampleRate = sampleRate
+    }
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+        val freq = param("sibilanceHz", 6000f).coerceIn(2000f, 12000f)
+        val thresholdDb = param("thresholdDb", -24f).coerceIn(-60f, 0f)
+        val ratio = param("ratio", 4f).coerceIn(1f, 20f)
+
+        val dt = 1f / sampleRate
+        val rc = 1f / (2f * Math.PI.toFloat() * freq)
+        val a = rc / (rc + dt)
+        val hp = a * (hpOut[channel] + sample - hpIn[channel])
+        hpIn[channel] = sample
+        hpOut[channel] = hp
+
+        val attackCoeff = exp(-1f / (0.003f * sampleRate))
+        val releaseCoeff = exp(-1f / (0.08f * sampleRate))
+        val absVal = abs(hp)
+        val envCoeff = if (absVal > envelope[channel]) attackCoeff else releaseCoeff
+        envelope[channel] = envCoeff * envelope[channel] + (1f - envCoeff) * absVal
+
+        val envDb = 20f * log10(envelope[channel].coerceAtLeast(1e-6f))
+        val targetGainDb = if (envDb > thresholdDb) (thresholdDb + (envDb - thresholdDb) / ratio) - envDb else 0f
+        val targetGain = 10f.pow(targetGainDb / 20f)
+        val gCoeff = if (targetGain < gainState[channel]) attackCoeff else releaseCoeff
+        gainState[channel] = gCoeff * gainState[channel] + (1f - gCoeff) * targetGain
+
+        val reducedHigh = hp * gainState[channel]
+        return (sample - hp + reducedHigh).coerceIn(-1f, 1f)
     }
 }
