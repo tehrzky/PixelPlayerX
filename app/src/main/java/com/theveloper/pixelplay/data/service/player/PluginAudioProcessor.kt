@@ -45,6 +45,10 @@ class PluginAudioProcessor(
             "tape_saturator" -> TapeSaturatorNode()
             "dc_blocker" -> DcBlockerNode()
             "vinyl_dropout" -> VinylDropoutNode()
+            "phaser" -> PhaserNode()
+            "exciter" -> ExciterNode()
+            "envelope_follower" -> EnvelopeFollowerNode()
+            "de_esser" -> DeEsserNode()
             else -> DistortionNode()
         }
         nodeDef to node
