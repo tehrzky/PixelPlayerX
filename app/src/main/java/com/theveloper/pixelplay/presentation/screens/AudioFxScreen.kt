@@ -186,7 +186,11 @@ fun AudioFxScreen(
                         model = pluginModel,
                         onEnabledChange = { pluginManagerViewModel.setPluginEnabled(pluginModel.definition.id, it) },
                         onParamChangeLive = { key, value -> pluginManagerViewModel.setPluginParamLive(pluginModel.definition.id, key, value) },
-                        onParamChangeFinished = { key, value -> pluginManagerViewModel.setPluginParam(pluginModel.definition.id, key, value) }
+                        onParamChangeFinished = { key, value -> pluginManagerViewModel.setPluginParam(pluginModel.definition.id, key, value) },
+                        onMacroChangeLive = { macroId, value -> pluginManagerViewModel.setMacroLive(pluginModel.definition.id, macroId, value) },
+                        onMacroChangeFinished = { macroId, value -> pluginManagerViewModel.setMacro(pluginModel.definition.id, macroId, value) },
+                        onNodeBypassChange = { nodeId, enabled -> pluginManagerViewModel.setNodeEnabled(pluginModel.definition.id, nodeId, enabled) },
+                        onResetToDefaults = { pluginManagerViewModel.resetToDefaults(pluginModel.definition.id) }
                     )
                 }
             }
@@ -293,30 +297,86 @@ private fun PluginCard(
     model: PluginUiModel,
     onEnabledChange: (Boolean) -> Unit,
     onParamChangeLive: (String, Float) -> Unit,
-    onParamChangeFinished: (String, Float) -> Unit
+    onParamChangeFinished: (String, Float) -> Unit,
+    onMacroChangeLive: (String, Float) -> Unit,
+    onMacroChangeFinished: (String, Float) -> Unit,
+    onNodeBypassChange: (String, Boolean) -> Unit,
+    onResetToDefaults: () -> Unit
 ) {
+    var showAdvanced by remember { mutableStateOf(false) }
+    val hasMacros = model.definition.macros.isNotEmpty()
+
     Card(
         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         androidx.compose.foundation.layout.Column(modifier = Modifier.padding(vertical = 8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                androidx.compose.material3.TextButton(onClick = onResetToDefaults) {
+                    Text("Reset", style = MaterialTheme.typography.labelMedium)
+                }
+                if (hasMacros) {
+                    androidx.compose.material3.TextButton(onClick = { showAdvanced = !showAdvanced }) {
+                        Text(if (showAdvanced) "Hide Advanced" else "Show Advanced", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
             SwitchSettingItem(
                 title = model.definition.name,
                 subtitle = model.definition.description,
                 checked = model.enabled,
                 onCheckedChange = onEnabledChange
             )
-            model.definition.chain.forEach { node ->
-                node.params.forEach { (key, paramDef) ->
+
+            if (hasMacros) {
+                model.definition.macros.forEach { macro ->
                     DebouncedSlider(
-                        label = paramDef.label,
-                        externalValue = model.paramValues[key] ?: paramDef.default,
-                        valueRange = paramDef.min..paramDef.max,
-                        onValueChangeLive = { onParamChangeLive(key, it) },
-                        onValueChangeFinished = { onParamChangeFinished(key, it) },
-                        valueText = { v -> if (paramDef.unit.isNotBlank()) "${formatValue(v)}${paramDef.unit}" else formatValue(v) },
+                        label = macro.label,
+                        externalValue = model.macroValues[macro.id] ?: macro.default,
+                        valueRange = 0f..100f,
+                        onValueChangeLive = { onMacroChangeLive(macro.id, it) },
+                        onValueChangeFinished = { onMacroChangeFinished(macro.id, it) },
+                        valueText = { v -> "${v.roundToInt()}%" },
                         enabled = model.enabled
                     )
+                }
+            }
+
+            if (showAdvanced || !hasMacros) {
+                model.definition.chain.forEachIndexed { nodeIndex, node ->
+                    val nodeId = node.effectiveId(nodeIndex)
+                    val visibleParams = node.params.filter { it.value.visible }
+                    if (visibleParams.isEmpty()) return@forEachIndexed
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            node.type.replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        androidx.compose.material3.Switch(
+                            checked = model.nodeEnabled[nodeId] ?: true,
+                            onCheckedChange = { onNodeBypassChange(nodeId, it) }
+                        )
+                    }
+                    visibleParams.forEach { (key, paramDef) ->
+                        DebouncedSlider(
+                            label = paramDef.label,
+                            externalValue = model.paramValues[key] ?: paramDef.default,
+                            valueRange = paramDef.min..paramDef.max,
+                            onValueChangeLive = { onParamChangeLive(key, it) },
+                            onValueChangeFinished = { onParamChangeFinished(key, it) },
+                            valueText = { v -> if (paramDef.unit.isNotBlank()) "${formatValue(v)}${paramDef.unit}" else formatValue(v) },
+                            enabled = model.enabled && (model.nodeEnabled[nodeId] ?: true)
+                        )
+                    }
                 }
             }
         }
