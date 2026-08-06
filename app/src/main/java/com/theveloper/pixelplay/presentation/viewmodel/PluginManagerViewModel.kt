@@ -114,6 +114,7 @@ class PluginManagerViewModel @Inject constructor(
 
     fun setPluginParamLive(pluginId: String, key: String, value: Float) {
         pluginStateHolder.paramValues["$pluginId:$key"] = value
+        pluginStateHolder.paramOverridden.add("$pluginId:$key")
     }
     fun setPluginParam(pluginId: String, key: String, value: Float) {
         viewModelScope.launch { pluginRepository.setPluginParam(pluginId, key, value) }
@@ -170,6 +171,7 @@ class PluginManagerViewModel @Inject constructor(
         viewModelScope.launch {
             plugin.definition.chain.forEach { node -> node.params.forEach { (key, paramDef) ->
                 pluginStateHolder.paramValues.remove("$pluginId:$key")
+                pluginStateHolder.paramOverridden.remove("$pluginId:$key")
                 pluginRepository.setPluginParam(pluginId, key, paramDef.default)
             } }
             plugin.definition.macros.forEach { macro ->
