@@ -11,12 +11,12 @@ import kotlin.math.sin
 import kotlin.math.tanh
 import kotlin.random.Random
 
-/** One DSP building block a plugin's chain can use. Same math as our built-in
- * Lo-Fi/Radio/Wow-Flutter/Reverb processors, generalized to read named params
- * live instead of fixed fields. */
+/** One DSP building block a plugin's chain can use. `params` is a plain map
+ * resolved once per audio buffer (not per sample) by PluginAudioProcessor —
+ * reading from it here is just a HashMap lookup, no allocation. */
 interface PluginDspNode {
     fun configure(channelCount: Int, sampleRate: Int)
-    fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float
+    fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float
 }
 
 class BandpassNode : PluginDspNode {
@@ -32,9 +32,9 @@ class BandpassNode : PluginDspNode {
         this.sampleRate = sampleRate
     }
 
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val lowCut = param("lowCutHz", 20f)
-        val highCut = param("highCutHz", 18000f)
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val lowCut = params["lowCutHz"] ?: 20f
+        val highCut = params["highCutHz"] ?: 18000f
         val lpA = alpha(highCut, true)
         val hpA = alpha(lowCut, false)
         val lp = lpState[channel] + lpA * (sample - lpState[channel])
@@ -54,9 +54,8 @@ class BandpassNode : PluginDspNode {
 
 class DistortionNode : PluginDspNode {
     override fun configure(channelCount: Int, sampleRate: Int) {}
-
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val drive = param("drive", 0f).coerceIn(0f, 100f)
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val drive = (params["drive"] ?: 0f).coerceIn(0f, 100f)
         if (drive == 0f) return sample
         val depthBits = 16f - (drive / 100f) * 12f
         val levels = 2f.pow(depthBits)
@@ -66,14 +65,8 @@ class DistortionNode : PluginDspNode {
     }
 }
 
-/** Vinyl surface noise, in two parts:
- *  - Hiss: lightly lowpassed white noise (warmer than raw white noise —
- *    real surface hiss isn't full-band static).
- *  - Crackle: a genuine Poisson point process (exponentially distributed
- *    inter-arrival gaps, not a fixed per-sample coin-flip), where each pop
- *    is a short decaying transient with randomized loudness and length —
- *    not a single hard click. This is what actually reads as "vinyl" rather
- *    than "static": real needle pops have a tiny resonant tail. */
+/** Vinyl surface noise: lowpassed hiss + a genuine Poisson-process crackle
+ * (exponential inter-arrival gaps, each pop a short decaying transient). */
 class NoiseNode : PluginDspNode {
     private val random = Random(0)
     private var hissLpState = FloatArray(0)
@@ -88,9 +81,9 @@ class NoiseNode : PluginDspNode {
         popDecay = FloatArray(channelCount)
     }
 
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val hiss = param("hiss", 0f).coerceIn(0f, 100f) / 100f
-        val crackleDensity = param("crackleDensity", 0f).coerceIn(0f, 100f) / 100f
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val hiss = (params["hiss"] ?: 0f).coerceIn(0f, 100f) / 100f
+        val crackleDensity = (params["crackleDensity"] ?: 0f).coerceIn(0f, 100f) / 100f
         var out = sample
 
         if (hiss > 0f) {
@@ -107,8 +100,8 @@ class NoiseNode : PluginDspNode {
                 popCountdown[channel] = nextInterval(crackleDensity)
             }
             if (popEnvelope[channel] > 0.001f) {
-                val sign = if (random.nextBoolean()) 1f else -1f
-                out += sign * popEnvelope[channel] * (random.nextFloat() * 0.5f + 0.5f)
+                val s = if (random.nextBoolean()) 1f else -1f
+                out += s * popEnvelope[channel] * (random.nextFloat() * 0.5f + 0.5f)
                 popEnvelope[channel] *= popDecay[channel]
             }
         }
@@ -133,29 +126,26 @@ class WobbleNode : PluginDspNode {
 
     override fun configure(channelCount: Int, sampleRate: Int) {
         ring = Array(channelCount) { FloatArray(ringSize) }
-        writePos = 0
-        phase = 0.0
+        writePos = 0; phase = 0.0
         this.sampleRate = sampleRate
         randomWalk = FloatArray(channelCount)
     }
 
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val rateHz = param("rateHz", 0.8f).coerceIn(0.05f, 20f)
-        val depth = param("depth", 0f).coerceIn(0f, 100f) / 100f
-        val randomness = param("randomness", 0f).coerceIn(0f, 100f) / 100f
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val rateHz = (params["rateHz"] ?: 0.8f).coerceIn(0.05f, 20f)
+        val depth = (params["depth"] ?: 0f).coerceIn(0f, 100f) / 100f
+        val randomness = (params["randomness"] ?: 0f).coerceIn(0f, 100f) / 100f
         val depthSamples = depth * 0.004f * sampleRate
         val baseDelay = 20f + depthSamples
 
         val buf = ring[channel]
         buf[writePos] = sample
 
-        // Slow leaky-integrator random walk: bounded, organic drift instead of a
-        // perfectly periodic sine. Blended in by `randomness` — 0 = pure classic
-        // wow/flutter sine, 1 = fully mechanical/imperfect drift.
         randomWalk[channel] = (randomWalk[channel] + (random.nextFloat() * 2f - 1f) * 0.01f) * 0.995f
         val periodicLfo = (sin(2.0 * Math.PI * rateHz * phase) * 0.7 + sin(2.0 * Math.PI * rateHz * 8.1 * phase) * 0.3).toFloat()
         val lfo = periodicLfo * (1f - randomness) + randomWalk[channel].coerceIn(-1f, 1f) * randomness
         val delaySamples = baseDelay + lfo * depthSamples
+
         var readPos = writePos - delaySamples
         while (readPos < 0f) readPos += ringSize
         val i0 = floor(readPos).toInt() % ringSize
@@ -182,16 +172,16 @@ class ReverbNode : PluginDspNode {
 
     override fun configure(channelCount: Int, sampleRate: Int) {
         this.sampleRate = sampleRate
-        combBuf = Array(channelCount) { Array(baseCombMs.size) { i -> FloatArray(((baseCombMs[i] * 4f) * sampleRate / 1000f).toInt().coerceAtLeast(1)) } }
+        combBuf = Array(channelCount) { Array(baseCombMs.size) { i -> FloatArray((baseCombMs[i] * 4f * sampleRate / 1000f).toInt().coerceAtLeast(1)) } }
         combPos = Array(channelCount) { IntArray(baseCombMs.size) }
-        apBuf = Array(channelCount) { Array(baseAllpassMs.size) { i -> FloatArray(((baseAllpassMs[i] * 4f) * sampleRate / 1000f).toInt().coerceAtLeast(1)) } }
+        apBuf = Array(channelCount) { Array(baseAllpassMs.size) { i -> FloatArray((baseAllpassMs[i] * 4f * sampleRate / 1000f).toInt().coerceAtLeast(1)) } }
         apPos = Array(channelCount) { IntArray(baseAllpassMs.size) }
     }
 
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val roomSize = param("roomSize", 30f).coerceIn(0f, 100f) / 100f
-        val decay = param("decayTime", 40f).coerceIn(0f, 95f) / 100f
-        val wet = param("mix", 30f).coerceIn(0f, 100f) / 100f * 0.6f
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val roomSize = (params["roomSize"] ?: 30f).coerceIn(0f, 100f) / 100f
+        val decay = (params["decayTime"] ?: 40f).coerceIn(0f, 95f) / 100f
+        val wet = (params["mix"] ?: 30f).coerceIn(0f, 100f) / 100f * 0.6f
         val sizeMultiplier = 1f + roomSize * 3f
 
         var combSum = 0f
@@ -218,7 +208,6 @@ class ReverbNode : PluginDspNode {
             apPos[channel][i] = (pos + 1) % activeLen
             signal = out
         }
-
         return sample * (1f - wet) + signal * wet
     }
 }
@@ -227,17 +216,14 @@ class BitcrusherNode : PluginDspNode {
     private var phase = FloatArray(0)
     private var held = FloatArray(0)
     private var sampleRate = 44100
-
     override fun configure(channelCount: Int, sampleRate: Int) {
-        phase = FloatArray(channelCount)
-        held = FloatArray(channelCount)
+        phase = FloatArray(channelCount); held = FloatArray(channelCount)
         this.sampleRate = sampleRate
     }
-
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val bitDepth = param("bitDepth", 16f).coerceIn(1f, 16f)
-        val targetRate = param("sampleRateHz", sampleRate.toFloat()).coerceIn(1000f, sampleRate.toFloat())
-        val drive = param("drive", 0f).coerceIn(0f, 100f)
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val bitDepth = (params["bitDepth"] ?: 16f).coerceIn(1f, 16f)
+        val targetRate = (params["sampleRateHz"] ?: sampleRate.toFloat()).coerceIn(1000f, sampleRate.toFloat())
+        val drive = (params["drive"] ?: 0f).coerceIn(0f, 100f)
 
         val step = targetRate / sampleRate
         phase[channel] += step
@@ -258,7 +244,6 @@ class DelayNode : PluginDspNode {
     private var writePos = IntArray(0)
     private var lpState = FloatArray(0)
     private var sampleRate = 44100
-
     override fun configure(channelCount: Int, sampleRate: Int) {
         this.sampleRate = sampleRate
         val maxSamples = (maxDelayMs * sampleRate / 1000f).toInt()
@@ -266,12 +251,11 @@ class DelayNode : PluginDspNode {
         writePos = IntArray(channelCount)
         lpState = FloatArray(channelCount)
     }
-
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val delayMs = param("delayTimeMs", 250f).coerceIn(1f, maxDelayMs)
-        val feedback = param("feedback", 30f).coerceIn(0f, 95f) / 100f
-        val highCut = param("highCutHz", 8000f).coerceIn(200f, 20000f)
-        val pingPong = param("pingPongPan", 0f).coerceIn(0f, 1f)
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val delayMs = (params["delayTimeMs"] ?: 250f).coerceIn(1f, maxDelayMs)
+        val feedback = (params["feedback"] ?: 30f).coerceIn(0f, 95f) / 100f
+        val highCut = (params["highCutHz"] ?: 8000f).coerceIn(200f, 20000f)
+        val pingPong = (params["pingPongPan"] ?: 0f).coerceIn(0f, 1f)
 
         val buf = buffers[channel]
         val delaySamples = (delayMs * sampleRate / 1000f).toInt().coerceIn(1, buf.size - 1)
@@ -287,8 +271,6 @@ class DelayNode : PluginDspNode {
         buf[writePos[channel]] = sample + delayed * feedback
         writePos[channel] = (writePos[channel] + 1) % buf.size
 
-        // Approximate stereo widening rather than true cross-channel bounce (which
-        // would need write-position coordination across channels).
         val channelWeight = if (channel % 2 == 0) (1f - pingPong * 0.5f) else (0.5f + pingPong * 0.5f)
         return (sample + delayed * 0.5f * channelWeight).coerceIn(-1f, 1f)
     }
@@ -297,17 +279,14 @@ class DelayNode : PluginDspNode {
 class CompressorNode : PluginDspNode {
     private var envelope = FloatArray(0)
     private var sampleRate = 44100
-
     override fun configure(channelCount: Int, sampleRate: Int) {
-        envelope = FloatArray(channelCount)
-        this.sampleRate = sampleRate
+        envelope = FloatArray(channelCount); this.sampleRate = sampleRate
     }
-
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val thresholdDb = param("thresholdDb", -18f).coerceIn(-60f, 0f)
-        val ratio = param("ratio", 4f).coerceIn(1f, 20f)
-        val attackMs = param("attackMs", 10f).coerceIn(0.1f, 200f)
-        val releaseMs = param("releaseMs", 100f).coerceIn(1f, 1000f)
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val thresholdDb = (params["thresholdDb"] ?: -18f).coerceIn(-60f, 0f)
+        val ratio = (params["ratio"] ?: 4f).coerceIn(1f, 20f)
+        val attackMs = (params["attackMs"] ?: 10f).coerceIn(0.1f, 200f)
+        val releaseMs = (params["releaseMs"] ?: 100f).coerceIn(1f, 1000f)
 
         val inputLevel = abs(sample)
         val attackCoeff = exp(-1f / (attackMs / 1000f * sampleRate))
@@ -322,12 +301,8 @@ class CompressorNode : PluginDspNode {
     }
 }
 
-/** Simple two-tap granular pitch shifter. This is the most experimental of the
- * four new nodes — true pitch-shifting is inherently hard to do artifact-free
- * without FFT-based processing, which this deliberately avoids to stay in
- * pure-Kotlin, sample-rate-safe territory. Expect some grain-boundary warble on
- * larger shifts; formantShift is a coarse spectral-tilt approximation, not true
- * formant preservation. */
+/** Two-tap granular pitch shifter. Deliberately avoids FFT to stay pure-Kotlin
+ * and sample-rate-safe; expect some grain-boundary warble on larger shifts. */
 class PitchShiftNode : PluginDspNode {
     private val ringSize = 8192
     private val grainSize = 2048f
@@ -341,13 +316,12 @@ class PitchShiftNode : PluginDspNode {
         this.channelCount = channelCount
         ring = Array(channelCount) { FloatArray(ringSize) }
         tiltState = FloatArray(channelCount)
-        writePos = 0
-        readPos1 = 0f
+        writePos = 0; readPos1 = 0f
     }
 
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val semitones = param("pitchSemitones", 0f).coerceIn(-12f, 12f)
-        val formantShift = param("formantShift", 0f).coerceIn(-1f, 1f)
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val semitones = (params["pitchSemitones"] ?: 0f).coerceIn(-12f, 12f)
+        val formantShift = (params["formantShift"] ?: 0f).coerceIn(-1f, 1f)
 
         val buf = ring[channel]
         buf[writePos] = sample
@@ -374,7 +348,6 @@ class PitchShiftNode : PluginDspNode {
 
         var out = tap(readPos1) * window(readPos1) + tap(readPos2) * window(readPos2)
 
-        // Coarse formant approximation: a one-pole tilt filter, not true formant shift.
         if (formantShift != 0f) {
             val a = 0.3f + formantShift * 0.2f
             tiltState[channel] = tiltState[channel] + a * (out - tiltState[channel])
@@ -392,16 +365,12 @@ class PitchShiftNode : PluginDspNode {
 
 class GainNode : PluginDspNode {
     override fun configure(channelCount: Int, sampleRate: Int) {}
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val gainDb = param("gainDb", 0f).coerceIn(-24f, 24f)
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val gainDb = (params["gainDb"] ?: 0f).coerceIn(-24f, 24f)
         return (sample * 10f.pow(gainDb / 20f)).coerceIn(-1f, 1f)
     }
 }
 
-/** Stereo-to-mono fold. Note: this streaming per-sample architecture processes
- * one channel at a time with no lookahead into the other channel of the same
- * frame, so this uses the *previous* frame's channel values for blending — a
- * one-sample (≈0.02ms) latency that's inaudible but worth documenting. */
 class MonoUtilityNode : PluginDspNode {
     private var lastChannelSamples = FloatArray(0)
     private var channelCount = 1
@@ -409,8 +378,8 @@ class MonoUtilityNode : PluginDspNode {
         this.channelCount = channelCount
         lastChannelSamples = FloatArray(channelCount)
     }
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val monoAmount = param("monoAmount", 100f).coerceIn(0f, 100f) / 100f
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val monoAmount = (params["monoAmount"] ?: 100f).coerceIn(0f, 100f) / 100f
         if (channelCount < 2) return sample
         val prevAvg = lastChannelSamples.average().toFloat()
         lastChannelSamples[channel] = sample
@@ -418,8 +387,6 @@ class MonoUtilityNode : PluginDspNode {
     }
 }
 
-/** Mid-side stereo widener. Same one-frame-latency caveat as MonoUtilityNode
- * for reading the "other" channel. */
 class StereoWidenerNode : PluginDspNode {
     private var lastChannelSamples = FloatArray(0)
     private var channelCount = 1
@@ -427,8 +394,8 @@ class StereoWidenerNode : PluginDspNode {
         this.channelCount = channelCount
         lastChannelSamples = FloatArray(channelCount)
     }
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val width = param("width", 50f).coerceIn(0f, 100f) / 100f * 2f
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val width = (params["width"] ?: 50f).coerceIn(0f, 200f) / 100f
         if (channelCount < 2) return sample
         val other = lastChannelSamples[(channel + 1) % channelCount]
         lastChannelSamples[channel] = sample
@@ -439,7 +406,6 @@ class StereoWidenerNode : PluginDspNode {
     }
 }
 
-/** Single-band peaking EQ (RBJ biquad cookbook formula). */
 class ParametricEqNode : PluginDspNode {
     private var x1 = FloatArray(0); private var x2 = FloatArray(0)
     private var y1 = FloatArray(0); private var y2 = FloatArray(0)
@@ -449,15 +415,15 @@ class ParametricEqNode : PluginDspNode {
         y1 = FloatArray(channelCount); y2 = FloatArray(channelCount)
         this.sampleRate = sampleRate
     }
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val freq = param("freqHz", 1000f).coerceIn(20f, 20000f)
-        val gainDb = param("gainDb", 0f).coerceIn(-24f, 24f)
-        val q = param("q", 1f).coerceIn(0.1f, 10f)
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val freq = (params["freqHz"] ?: 1000f).coerceIn(20f, 20000f)
+        val gainDb = (params["gainDb"] ?: 0f).coerceIn(-24f, 24f)
+        val q = (params["q"] ?: 1f).coerceIn(0.1f, 10f)
 
         val a = 10f.pow(gainDb / 40f)
         val w0 = (2.0 * Math.PI * freq / sampleRate).toFloat()
         val cosw0 = kotlin.math.cos(w0)
-        val sinw0 = kotlin.math.sin(w0)
+        val sinw0 = sin(w0)
         val alpha = sinw0 / (2f * q)
 
         val b0 = 1f + alpha * a
@@ -476,8 +442,6 @@ class ParametricEqNode : PluginDspNode {
     }
 }
 
-/** Combined low-shelf + high-shelf via one-pole taps, simpler and cheaper than
- * true RBJ shelving biquads. Good enough for tonal shaping, not mastering-grade. */
 class ShelvingEqNode : PluginDspNode {
     private var lowLpState = FloatArray(0)
     private var hpIn = FloatArray(0); private var hpOut = FloatArray(0)
@@ -487,11 +451,11 @@ class ShelvingEqNode : PluginDspNode {
         hpIn = FloatArray(channelCount); hpOut = FloatArray(channelCount)
         this.sampleRate = sampleRate
     }
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val lowFreq = param("lowShelfHz", 200f).coerceIn(20f, 2000f)
-        val lowGainDb = param("lowShelfGainDb", 0f).coerceIn(-24f, 24f)
-        val highFreq = param("highShelfHz", 4000f).coerceIn(1000f, 20000f)
-        val highGainDb = param("highShelfGainDb", 0f).coerceIn(-24f, 24f)
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val lowFreq = (params["lowShelfHz"] ?: 200f).coerceIn(20f, 2000f)
+        val lowGainDb = (params["lowShelfGainDb"] ?: 0f).coerceIn(-24f, 24f)
+        val highFreq = (params["highShelfHz"] ?: 4000f).coerceIn(1000f, 20000f)
+        val highGainDb = (params["highShelfGainDb"] ?: 0f).coerceIn(-24f, 24f)
 
         val dtL = 1f / sampleRate
         val rcL = 1f / (2f * Math.PI.toFloat() * lowFreq)
@@ -515,12 +479,11 @@ class LimiterNode : PluginDspNode {
     private var gainState = FloatArray(0)
     private var sampleRate = 44100
     override fun configure(channelCount: Int, sampleRate: Int) {
-        gainState = FloatArray(channelCount) { 1f }
-        this.sampleRate = sampleRate
+        gainState = FloatArray(channelCount) { 1f }; this.sampleRate = sampleRate
     }
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val ceilingDb = param("ceilingDb", -1f).coerceIn(-24f, 0f)
-        val releaseMs = param("releaseMs", 50f).coerceIn(5f, 500f)
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val ceilingDb = (params["ceilingDb"] ?: params["thresholdDb"] ?: -1f).coerceIn(-24f, 0f)
+        val releaseMs = (params["releaseMs"] ?: 50f).coerceIn(5f, 500f)
         val ceiling = 10f.pow(ceilingDb / 20f)
         val absVal = abs(sample)
         val target = if (absVal > ceiling) ceiling / absVal else 1f
@@ -539,10 +502,10 @@ class GateNode : PluginDspNode {
         gainState = FloatArray(channelCount) { 1f }
         this.sampleRate = sampleRate
     }
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val thresholdDb = param("thresholdDb", -40f).coerceIn(-80f, 0f)
-        val attackMs = param("attackMs", 5f).coerceIn(0.1f, 100f)
-        val releaseMs = param("releaseMs", 150f).coerceIn(5f, 1000f)
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val thresholdDb = (params["thresholdDb"] ?: -40f).coerceIn(-80f, 0f)
+        val attackMs = (params["attackMs"] ?: 5f).coerceIn(0.1f, 100f)
+        val releaseMs = (params["releaseMs"] ?: 150f).coerceIn(5f, 1000f)
 
         val absVal = abs(sample)
         val attackCoeff = exp(-1f / (attackMs / 1000f * sampleRate))
@@ -569,10 +532,10 @@ class ChorusNode : PluginDspNode {
         writePos = 0; phase = 0.0
         this.sampleRate = sampleRate
     }
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val rateHz = param("rateHz", 1.5f).coerceIn(0.1f, 8f)
-        val depth = param("depth", 40f).coerceIn(0f, 100f) / 100f
-        val mix = param("mix", 50f).coerceIn(0f, 100f) / 100f
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val rateHz = (params["rateHz"] ?: 1.5f).coerceIn(0.1f, 8f)
+        val depth = (params["depth"] ?: 40f).coerceIn(0f, 100f) / 100f
+        val mix = (params["mix"] ?: 50f).coerceIn(0f, 100f) / 100f
 
         val buf = ring[channel]
         buf[writePos] = sample
@@ -596,13 +559,11 @@ class ChorusNode : PluginDspNode {
     }
 }
 
-/** Asymmetric soft clipping for tube/tape-style warmth — distinct from
- * DistortionNode, which bitcrushes (quantizes) rather than saturating. */
 class TapeSaturatorNode : PluginDspNode {
     override fun configure(channelCount: Int, sampleRate: Int) {}
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val drive = param("drive", 20f).coerceIn(0f, 100f)
-        val warmth = param("warmth", 30f).coerceIn(0f, 100f)
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val drive = (params["drive"] ?: 20f).coerceIn(0f, 100f)
+        val warmth = (params["warmth"] ?: 30f).coerceIn(0f, 100f)
         if (drive == 0f) return sample
         val g = 1f + drive / 100f * 5f
         val asym = warmth / 100f * 0.3f
@@ -612,17 +573,13 @@ class TapeSaturatorNode : PluginDspNode {
     }
 }
 
-/** Standard one-pole DC-blocking IIR filter. Cheap, always-safe to add after
- * any heavy nonlinear node (bitcrusher, saturator, extreme pitch shift) that
- * might introduce DC bias — prevents silent headroom loss downstream. */
 class DcBlockerNode : PluginDspNode {
     private var xPrev = FloatArray(0)
     private var yPrev = FloatArray(0)
     override fun configure(channelCount: Int, sampleRate: Int) {
-        xPrev = FloatArray(channelCount)
-        yPrev = FloatArray(channelCount)
+        xPrev = FloatArray(channelCount); yPrev = FloatArray(channelCount)
     }
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
         val r = 0.995f
         val y = sample - xPrev[channel] + r * yPrev[channel]
         xPrev[channel] = sample
@@ -631,9 +588,6 @@ class DcBlockerNode : PluginDspNode {
     }
 }
 
-/** Periodic rhythmic dropout/bump locked to a rotation rate (e.g. 33/45 RPM) —
- * distinct from NoiseNode's crackle, which is intentionally non-periodic. This
- * is the "warped record" / "needle catches the same spot every rotation" sound. */
 class VinylDropoutNode : PluginDspNode {
     private var sampleRate = 44100
     private var phaseSamples = FloatArray(0)
@@ -642,9 +596,9 @@ class VinylDropoutNode : PluginDspNode {
         this.sampleRate = sampleRate
         phaseSamples = FloatArray(channelCount)
     }
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val rpm = param("rpm", 33f).coerceIn(1f, 100f)
-        val dropoutAmount = param("dropoutAmount", 30f).coerceIn(0f, 100f) / 100f
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val rpm = (params["rpm"] ?: 33f).coerceIn(1f, 100f)
+        val dropoutAmount = (params["dropoutAmount"] ?: 30f).coerceIn(0f, 100f) / 100f
         val periodSamples = (60f / rpm) * sampleRate
 
         phaseSamples[channel] += 1f
@@ -652,16 +606,13 @@ class VinylDropoutNode : PluginDspNode {
 
         val bumpWindow = periodSamples * 0.002f
         val jitter = (random.nextFloat() - 0.5f) * periodSamples * 0.01f
-        val distToBump = kotlin.math.abs(phaseSamples[channel] - periodSamples / 2f - jitter)
+        val distToBump = abs(phaseSamples[channel] - periodSamples / 2f - jitter)
         return if (dropoutAmount > 0f && distToBump < bumpWindow) {
             sample * (1f - dropoutAmount) + (random.nextFloat() * 2f - 1f) * dropoutAmount * 0.4f
         } else sample
     }
 }
 
-/** True phaser: N cascaded first-order allpass stages with LFO-swept corner
- * frequency, distinct from ChorusNode's delay-line modulation — no delay
- * latency, gives the classic jet-sweep notch character. */
 class PhaserNode : PluginDspNode {
     private val stageCount = 4
     private var apState: Array<FloatArray> = arrayOf()
@@ -672,11 +623,11 @@ class PhaserNode : PluginDspNode {
         phase = 0.0
         this.sampleRate = sampleRate
     }
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val rateHz = param("rateHz", 0.5f).coerceIn(0.05f, 5f)
-        val depth = param("depth", 60f).coerceIn(0f, 100f) / 100f
-        val feedback = param("feedback", 30f).coerceIn(0f, 90f) / 100f
-        val mix = param("mix", 50f).coerceIn(0f, 100f) / 100f
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val rateHz = (params["rateHz"] ?: 0.5f).coerceIn(0.05f, 5f)
+        val depth = (params["depth"] ?: 60f).coerceIn(0f, 100f) / 100f
+        val feedback = (params["feedback"] ?: 30f).coerceIn(0f, 90f) / 100f
+        val mix = (params["mix"] ?: 50f).coerceIn(0f, 100f) / 100f
 
         val lfo = (sin(2.0 * Math.PI * rateHz * phase).toFloat() * 0.5f + 0.5f) * depth
         val centerFreq = 400f + lfo * 2000f
@@ -695,9 +646,6 @@ class PhaserNode : PluginDspNode {
     }
 }
 
-/** Harmonic exciter: generates new top-end harmonics from a high-passed copy
- * of the signal, distinct from a shelf boost — it adds content rather than
- * just amplifying whatever's already there (including existing hiss/noise). */
 class ExciterNode : PluginDspNode {
     private var hpIn = FloatArray(0); private var hpOut = FloatArray(0)
     private var sampleRate = 44100
@@ -705,10 +653,10 @@ class ExciterNode : PluginDspNode {
         hpIn = FloatArray(channelCount); hpOut = FloatArray(channelCount)
         this.sampleRate = sampleRate
     }
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val freq = param("thresholdHz", 3000f).coerceIn(500f, 12000f)
-        val amount = param("amount", 30f).coerceIn(0f, 100f) / 100f
-        val mix = param("mix", 50f).coerceIn(0f, 100f) / 100f
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val freq = (params["thresholdHz"] ?: params["freqHz"] ?: 3000f).coerceIn(500f, 12000f)
+        val amount = (params["amount"] ?: params["drive"] ?: 30f).coerceIn(0f, 100f) / 100f
+        val mix = (params["mix"] ?: 50f).coerceIn(0f, 100f) / 100f
 
         val dt = 1f / sampleRate
         val rc = 1f / (2f * Math.PI.toFloat() * freq)
@@ -718,27 +666,25 @@ class ExciterNode : PluginDspNode {
         hpOut[channel] = hp
 
         val driven = hp * (1f + amount * 4f)
-        val harmonics = kotlin.math.sign(driven) * (kotlin.math.abs(driven).pow(0.7f)) - hp
+        val harmonics = sign(driven) * (abs(driven).pow(0.7f)) - hp
         return (sample + harmonics * mix).coerceIn(-1f, 1f)
     }
 }
 
-/** Envelope-follower dynamic lowpass — auto-wah / "filter opens on transients." */
 class EnvelopeFollowerNode : PluginDspNode {
     private var envelope = FloatArray(0)
     private var lpState = FloatArray(0)
     private var sampleRate = 44100
     override fun configure(channelCount: Int, sampleRate: Int) {
-        envelope = FloatArray(channelCount)
-        lpState = FloatArray(channelCount)
+        envelope = FloatArray(channelCount); lpState = FloatArray(channelCount)
         this.sampleRate = sampleRate
     }
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val sensitivity = param("sensitivity", 50f).coerceIn(0f, 100f) / 100f
-        val minFreq = param("minFreqHz", 300f).coerceIn(50f, 5000f)
-        val maxFreq = param("maxFreqHz", 4000f).coerceIn(500f, 18000f)
-        val attackMs = param("attackMs", 10f).coerceIn(0.5f, 100f)
-        val releaseMs = param("releaseMs", 150f).coerceIn(5f, 1000f)
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val sensitivity = (params["sensitivity"] ?: 50f).coerceIn(0f, 100f) / 100f
+        val minFreq = (params["minFreqHz"] ?: 300f).coerceIn(50f, 5000f)
+        val maxFreq = (params["maxFreqHz"] ?: 4000f).coerceIn(500f, 18000f)
+        val attackMs = (params["attackMs"] ?: 10f).coerceIn(0.5f, 100f)
+        val releaseMs = (params["releaseMs"] ?: 150f).coerceIn(5f, 1000f)
 
         val absVal = abs(sample)
         val attackCoeff = exp(-1f / (attackMs / 1000f * sampleRate))
@@ -755,9 +701,6 @@ class EnvelopeFollowerNode : PluginDspNode {
     }
 }
 
-/** Frequency-conscious dynamics: compresses only a high sibilance band,
- * leaving lows/mids untouched — cheaper than true multiband (no crossover
- * network needed for a single detector band), covers the de-esser use case. */
 class DeEsserNode : PluginDspNode {
     private var hpIn = FloatArray(0); private var hpOut = FloatArray(0)
     private var envelope = FloatArray(0)
@@ -769,10 +712,10 @@ class DeEsserNode : PluginDspNode {
         gainState = FloatArray(channelCount) { 1f }
         this.sampleRate = sampleRate
     }
-    override fun process(sample: Float, channel: Int, frameStart: Boolean, param: (String, Float) -> Float): Float {
-        val freq = param("sibilanceHz", 6000f).coerceIn(2000f, 12000f)
-        val thresholdDb = param("thresholdDb", -24f).coerceIn(-60f, 0f)
-        val ratio = param("ratio", 4f).coerceIn(1f, 20f)
+    override fun process(sample: Float, channel: Int, frameStart: Boolean, params: Map<String, Float>): Float {
+        val freq = (params["sibilanceHz"] ?: 6000f).coerceIn(2000f, 12000f)
+        val thresholdDb = (params["thresholdDb"] ?: -24f).coerceIn(-60f, 0f)
+        val ratio = (params["ratio"] ?: 4f).coerceIn(1f, 20f)
 
         val dt = 1f / sampleRate
         val rc = 1f / (2f * Math.PI.toFloat() * freq)
