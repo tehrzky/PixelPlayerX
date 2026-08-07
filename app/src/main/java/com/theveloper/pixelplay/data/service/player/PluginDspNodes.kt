@@ -304,7 +304,7 @@ class CompressorNode : PluginDspNode {
 /** Two-tap granular pitch shifter. Deliberately avoids FFT to stay pure-Kotlin
  * and sample-rate-safe; expect some grain-boundary warble on larger shifts. */
 class PitchShiftNode : PluginDspNode {
-    private val ringSize = 8192
+    private val ringSize = 32768
     private val grainSize = 2048f
     private var ring: Array<FloatArray> = arrayOf()
     private var writePos = 0
@@ -358,6 +358,14 @@ class PitchShiftNode : PluginDspNode {
             writePos = (writePos + 1) % ringSize
             readPos1 += pitchRatio
             if (readPos1 >= writePos + ringSize) readPos1 -= ringSize
+            // Symmetric safety for pitch-DOWN (ratio < 1): the read pointer falls
+            // further behind the write pointer the longer this runs. Uncapped, it
+            // eventually reads stale/overwritten ring-buffer data — heard as an
+            // abrupt jump/skip. Cap the lag and snap forward before that happens.
+            val maxLag = ringSize - grainSize - 64f
+            if (writePos - readPos1 > maxLag) {
+                readPos1 = writePos - maxLag * 0.5f
+            }
         }
         return out.coerceIn(-1f, 1f)
     }
