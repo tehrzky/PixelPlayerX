@@ -176,26 +176,18 @@ class PluginManagerViewModel @Inject constructor(
 
     fun resetToDefaults(pluginId: String) {
         val plugin = _uiState.value.plugins.find { it.definition.id == pluginId } ?: return
-        viewModelScope.launch {
-            plugin.definition.chain.forEach { node -> node.params.forEach { (key, paramDef) ->
-                pluginStateHolder.paramValues.remove("$pluginId:$key")
-                pluginStateHolder.paramOverridden.remove("$pluginId:$key")
-                pluginRepository.setPluginParam(pluginId, key, paramDef.default)
-            } }
-            plugin.definition.macros.forEach { macro ->
-                pluginStateHolder.macroValues["$pluginId:${macro.id}"] = macro.default
-                pluginRepository.setMacro(pluginId, macro.id, macro.default)
-            }
-            plugin.definition.chain.forEachIndexed { i, node ->
-                val nodeId = node.effectiveId(i)
-                pluginStateHolder.nodeEnabledMap["$pluginId:$nodeId"] = true
-                pluginRepository.setNodeEnabled(pluginId, nodeId, true)
-            }
-            pluginStateHolder.masterOverrides.remove("$pluginId:outputGainDb")
-            pluginStateHolder.masterOverrides.remove("$pluginId:dryWetMix")
-            pluginRepository.setMaster(pluginId, "outputGainDb", plugin.definition.master.outputGainDb)
-            pluginRepository.setMaster(pluginId, "dryWetMix", plugin.definition.master.dryWetMix)
-        }
+        // Clear in-memory live state synchronously first (cheap, no I/O) so the
+        // audio thread reflects defaults instantly, then persist in one batch.
+        plugin.definition.chain.forEach { node -> node.params.keys.forEach { key ->
+            pluginStateHolder.paramValues.remove("$pluginId:$key")
+            pluginStateHolder.paramOverridden.remove("$pluginId:$key")
+        } }
+        plugin.definition.macros.forEach { macro -> pluginStateHolder.macroValues.remove("$pluginId:${macro.id}") }
+        plugin.definition.chain.forEachIndexed { i, node -> pluginStateHolder.nodeEnabledMap.remove("$pluginId:${node.effectiveId(i)}") }
+        pluginStateHolder.masterOverrides.remove("$pluginId:outputGainDb")
+        pluginStateHolder.masterOverrides.remove("$pluginId:dryWetMix")
+
+        viewModelScope.launch { pluginRepository.resetPluginToDefaults(plugin.definition) }
     }
 
     fun dismissError() {
