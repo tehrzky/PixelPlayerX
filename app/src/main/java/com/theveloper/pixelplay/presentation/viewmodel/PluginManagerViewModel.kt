@@ -9,6 +9,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -68,9 +69,21 @@ class PluginManagerViewModel @Inject constructor(
                     }
                     def.chain.forEach { node -> node.params.forEach { (key, paramDef) ->
                         launch {
-                            pluginRepository.pluginParamFlow(def.id, key, paramDef.default).collect { value ->
-                                updatePlugin(def.id) { it.copy(paramValues = it.paramValues + (key to value)) }
-                            }
+                            combine(
+                                pluginRepository.pluginParamFlow(def.id, key, paramDef.default),
+                                pluginRepository.overriddenParamsFlow(def.id)
+                            ) { value, overriddenSet -> value to (key in overriddenSet) }
+                                .collect { (value, isOverridden) ->
+                                    updatePlugin(def.id) { it.copy(paramValues = it.paramValues + (key to value)) }
+                                    val fullKey = "${def.id}:$key"
+                                    if (isOverridden) {
+                                        pluginStateHolder.paramValues[fullKey] = value
+                                        pluginStateHolder.paramOverridden.add(fullKey)
+                                    } else {
+                                        pluginStateHolder.paramValues.remove(fullKey)
+                                        pluginStateHolder.paramOverridden.remove(fullKey)
+                                    }
+                                }
                         }
                     } }
                     def.macros.forEach { macro ->
@@ -122,7 +135,10 @@ class PluginManagerViewModel @Inject constructor(
         pluginStateHolder.paramOverridden.add("$pluginId:$key")
     }
     fun setPluginParam(pluginId: String, key: String, value: Float) {
-        viewModelScope.launch { pluginRepository.setPluginParam(pluginId, key, value) }
+        viewModelScope.launch {
+            pluginRepository.setPluginParam(pluginId, key, value)
+            pluginRepository.setParamOverridden(pluginId, key, true)
+        }
     }
 
     fun setMacroLive(pluginId: String, macroId: String, value: Float) {
