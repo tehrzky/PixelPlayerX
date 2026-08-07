@@ -1,511 +1,343 @@
-package com.theveloper.pixelplay.presentation.screens
+package com.theveloper.pixelplay.presentation.viewmodel
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.DragHandle
-import androidx.compose.material.icons.rounded.RadioButtonUnchecked
-import androidx.compose.material.icons.rounded.Reorder
-import androidx.compose.material.icons.rounded.Sort
-import androidx.compose.material.icons.rounded.UploadFile
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavController
-import com.theveloper.pixelplay.presentation.components.CollapsibleCommonTopBar
-import com.theveloper.pixelplay.presentation.components.MiniPlayerHeight
-import com.theveloper.pixelplay.presentation.viewmodel.DisabledSortMode
-import com.theveloper.pixelplay.presentation.viewmodel.PluginManagerViewModel
-import com.theveloper.pixelplay.presentation.viewmodel.PluginUiModel
-import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.rememberReorderableLazyListState
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.theveloper.pixelplay.data.plugin.PluginDefinition
+import com.theveloper.pixelplay.data.plugin.PluginRepository
+import com.theveloper.pixelplay.data.service.player.PluginStateHolder
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import javax.inject.Inject
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun PluginManagerScreen(
-    navController: NavController,
-    viewModel: PluginManagerViewModel = hiltViewModel()
+enum class DisabledSortMode { DATE_NEWEST, DATE_OLDEST, ALPHA_AZ, ALPHA_ZA }
+
+data class PluginUiModel(
+    val definition: PluginDefinition,
+    val enabled: Boolean = true,
+    val paramValues: Map<String, Float> = emptyMap(),
+    val macroValues: Map<String, Float> = emptyMap(),
+    val nodeEnabled: Map<String, Boolean> = emptyMap(),
+    val outputGainDb: Float = 0f,
+    val dryWetMix: Float = 100f,
+    val fileSizeBytes: Long = 0L,
+    val dateAdded: Long = 0L
+)
+
+data class PluginManagerUiState(
+    val plugins: List<PluginUiModel> = emptyList(),
+    val importError: String? = null,
+    val disabledSortMode: DisabledSortMode = DisabledSortMode.DATE_NEWEST,
+    val isMultiSelectMode: Boolean = false,
+    val selectedIds: Set<String> = emptySet(),
+    val isArrangeMode: Boolean = false,
+    val batchImportSummary: String? = null
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val topBarHeight = 56.dp + statusBarHeight
+    /** Enabled plugins in strict DSP execution order — this is the actual audio
+     * topology, so it is never re-sorted automatically. Only manual drag reorder
+     * (Arrange mode) is allowed to change this order. */
+    val activePlugins: List<PluginUiModel> get() = plugins.filter { it.enabled }
 
-    var optionsModalPlugin by remember { mutableStateOf<PluginUiModel?>(null) }
-    var pendingBatchDelete by remember { mutableStateOf(false) }
-
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
-        val sources = uris.mapNotNull { uri ->
-            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@mapNotNull null
-            val name = uri.lastPathSegment ?: "plugin"
-            name to bytes
+    /** Disabled plugins, ordered by whichever sort the user picked in the divider
+     * menu. This list has no bearing on audio topology since none of these are
+     * hooked into the DSP graph. */
+    val disabledPlugins: List<PluginUiModel> get() {
+        val disabled = plugins.filterNot { it.enabled }
+        return when (disabledSortMode) {
+            DisabledSortMode.DATE_NEWEST -> disabled.sortedByDescending { it.dateAdded }
+            DisabledSortMode.DATE_OLDEST -> disabled.sortedBy { it.dateAdded }
+            DisabledSortMode.ALPHA_AZ -> disabled.sortedBy { it.definition.name.lowercase() }
+            DisabledSortMode.ALPHA_ZA -> disabled.sortedByDescending { it.definition.name.lowercase() }
         }
-        viewModel.importBatch(sources)
     }
+}
 
-    Box(modifier = Modifier.fillMaxWidth()) {
-        if (uiState.isArrangeMode) {
-            ArrangePluginsList(
-                topBarHeight = topBarHeight,
-                activePlugins = uiState.activePlugins,
-                onCommitOrder = { reorderedActiveIds ->
-                    // Active order changed — disabled plugins keep their existing
-                    // relative order, just appended after the new active order so
-                    // the underlying persisted order list stays complete.
-                    val disabledIds = uiState.disabledPlugins.map { it.definition.id }
-                    viewModel.commitPluginOrder(reorderedActiveIds + disabledIds)
+@HiltViewModel
+class PluginManagerViewModel @Inject constructor(
+    private val pluginRepository: PluginRepository,
+    private val pluginStateHolder: PluginStateHolder,
+    private val dualPlayerEngine: com.theveloper.pixelplay.data.service.player.DualPlayerEngine
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(PluginManagerUiState())
+    val uiState: StateFlow<PluginManagerUiState> = _uiState.asStateFlow()
+
+    init { observePlugins() }
+
+    private fun observePlugins() {
+        viewModelScope.launch {
+            pluginRepository.pluginOrderFlow.collect { orderedIds ->
+                val installed = pluginRepository.listInstalledPlugins().associateBy { it.id }
+                val ordered = orderedIds.mapNotNull { installed[it] }
+
+                _uiState.update { state ->
+                    state.copy(plugins = ordered.map { def ->
+                        PluginUiModel(
+                            definition = def,
+                            enabled = true,
+                            paramValues = def.chain.flatMap { it.params.entries }.associate { it.key to it.value.default },
+                            macroValues = def.macros.associate { it.id to it.default },
+                            nodeEnabled = def.chain.mapIndexed { i, n -> n.effectiveId(i) to true }.toMap(),
+                            outputGainDb = def.master.outputGainDb,
+                            dryWetMix = def.master.dryWetMix,
+                            fileSizeBytes = pluginRepository.pluginFileSizeBytes(def.id)
+                        )
+                    })
                 }
-            )
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(
-                    top = topBarHeight + 12.dp,
-                    bottom = MiniPlayerHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
-                        (if (uiState.isMultiSelectMode) 88.dp else 48.dp),
-                    start = 16.dp,
-                    end = 16.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                item(key = "import_button") {
-                    Button(
-                        onClick = { filePicker.launch(arrayOf("application/json", "application/zip", "text/*", "*/*")) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Rounded.UploadFile, contentDescription = null)
-                        androidx.compose.foundation.layout.Spacer(Modifier.padding(4.dp))
-                        Text("Import Plugin (.json or .zip)")
+
+                ordered.forEach { def ->
+                    launch {
+                        pluginRepository.pluginEnabledFlow(def.id).collect { enabled ->
+                            updatePlugin(def.id) { it.copy(enabled = enabled) }
+                        }
+                    }
+                    launch {
+                        pluginRepository.dateAddedFlow(def.id).collect { added ->
+                            updatePlugin(def.id) { it.copy(dateAdded = added) }
+                        }
+                    }
+                    def.chain.forEach { node -> node.params.forEach { (key, paramDef) ->
+                        launch {
+                            combine(
+                                pluginRepository.pluginParamFlow(def.id, key, paramDef.default),
+                                pluginRepository.overriddenParamsFlow(def.id)
+                            ) { value, overriddenSet -> value to (key in overriddenSet) }
+                                .collect { (value, isOverridden) ->
+                                    updatePlugin(def.id) { it.copy(paramValues = it.paramValues + (key to value)) }
+                                    val fullKey = "${def.id}:$key"
+                                    if (isOverridden) {
+                                        pluginStateHolder.paramValues[fullKey] = value
+                                        pluginStateHolder.paramOverridden.add(fullKey)
+                                    } else {
+                                        pluginStateHolder.paramValues.remove(fullKey)
+                                        pluginStateHolder.paramOverridden.remove(fullKey)
+                                    }
+                                }
+                        }
+                    } }
+                    def.macros.forEach { macro ->
+                        launch {
+                            pluginRepository.macroFlow(def.id, macro.id, macro.default).collect { value ->
+                                updatePlugin(def.id) { it.copy(macroValues = it.macroValues + (macro.id to value)) }
+                            }
+                        }
+                    }
+                    def.chain.forEachIndexed { i, node ->
+                        val nodeId = node.effectiveId(i)
+                        launch {
+                            pluginRepository.nodeEnabledFlow(def.id, nodeId).collect { enabled ->
+                                updatePlugin(def.id) { it.copy(nodeEnabled = it.nodeEnabled + (nodeId to enabled)) }
+                            }
+                        }
+                    }
+                    launch {
+                        pluginRepository.masterFlow(def.id, "outputGainDb", def.master.outputGainDb).collect { value ->
+                            updatePlugin(def.id) { it.copy(outputGainDb = value) }
+                        }
+                    }
+                    launch {
+                        pluginRepository.masterFlow(def.id, "dryWetMix", def.master.dryWetMix).collect { value ->
+                            updatePlugin(def.id) { it.copy(dryWetMix = value) }
+                        }
                     }
                 }
+            }
+        }
+    }
 
-                item(key = "action_bar") {
-                    if (uiState.isMultiSelectMode) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            TextButton(onClick = { viewModel.selectAll() }) { Text("Select All") }
-                            TextButton(onClick = { viewModel.setMultiSelectMode(false) }) { Text("Cancel") }
+    private fun updatePlugin(id: String, transform: (PluginUiModel) -> PluginUiModel) {
+        _uiState.update { state ->
+            state.copy(plugins = state.plugins.map { if (it.definition.id == id) transform(it) else it })
+        }
+    }
+
+    fun setPluginEnabled(pluginId: String, enabled: Boolean) {
+        // No rebuild needed here — PluginAudioProcessor already reads enabled state
+        // live every audio buffer via PluginStateHolder, so this takes effect
+        // instantly with zero rebuild pause. The rebuild call I added here in an
+        // earlier pass was unnecessary and was itself a source of avoidable pauses.
+        viewModelScope.launch { pluginRepository.setPluginEnabled(pluginId, enabled) }
+    }
+
+    fun setPluginParamLive(pluginId: String, key: String, value: Float) {
+        pluginStateHolder.paramValues["$pluginId:$key"] = value
+        pluginStateHolder.paramOverridden.add("$pluginId:$key")
+    }
+    fun setPluginParam(pluginId: String, key: String, value: Float) {
+        viewModelScope.launch {
+            pluginRepository.setPluginParam(pluginId, key, value)
+            pluginRepository.setParamOverridden(pluginId, key, true)
+        }
+    }
+
+    fun setMacroLive(pluginId: String, macroId: String, value: Float) {
+        pluginStateHolder.macroValues["$pluginId:$macroId"] = value
+    }
+    fun setMacro(pluginId: String, macroId: String, value: Float) {
+        viewModelScope.launch { pluginRepository.setMacro(pluginId, macroId, value) }
+    }
+
+    fun setMasterLive(pluginId: String, key: String, value: Float) {
+        pluginStateHolder.masterOverrides["$pluginId:$key"] = value
+    }
+    fun setMaster(pluginId: String, key: String, value: Float) {
+        viewModelScope.launch { pluginRepository.setMaster(pluginId, key, value) }
+    }
+
+    fun setNodeEnabled(pluginId: String, nodeId: String, enabled: Boolean) {
+        pluginStateHolder.nodeEnabledMap["$pluginId:$nodeId"] = enabled
+        viewModelScope.launch { pluginRepository.setNodeEnabled(pluginId, nodeId, enabled) }
+    }
+
+    fun importPlugin(rawJson: String) {
+        viewModelScope.launch {
+            try {
+                pluginRepository.importPlugin(rawJson)
+                _uiState.update { it.copy(importError = null) }
+                dualPlayerEngine.refreshAudioFxPluginChain()
+            } catch (e: IllegalArgumentException) {
+                _uiState.update { it.copy(importError = e.message) }
+            }
+        }
+    }
+
+    /** Handles both multi-selected .json files and .zip archives in one pass.
+     * Every source is parsed/validated first; the audio graph rebuilds exactly
+     * once at the end regardless of how many plugins came in (batch-imported
+     * plugins always land disabled, so in practice this rebuild is a no-op for
+     * topology — it only exists to be safe if a rebuild happens to coincide). */
+    fun importBatch(sources: List<Pair<String, ByteArray>>) {
+        viewModelScope.launch {
+            var successCount = 0
+            val skipped = mutableListOf<String>()
+            sources.forEach { (fileName, bytes) ->
+                pluginRepository.parseBatchImportSource(fileName, bytes).forEach { entry ->
+                    if (entry.rawJson != null) {
+                        try {
+                            pluginRepository.importPlugin(entry.rawJson)
+                            successCount++
+                        } catch (e: IllegalArgumentException) {
+                            skipped.add("${entry.fileName}: ${e.message}")
                         }
                     } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            OutlinedButton(onClick = { viewModel.setArrangeMode(true) }) {
-                                Icon(Icons.Rounded.Reorder, contentDescription = null, modifier = Modifier.size(18.dp))
-                                androidx.compose.foundation.layout.Spacer(Modifier.padding(3.dp))
-                                Text("Arrange")
-                            }
-                            OutlinedButton(onClick = { viewModel.setMultiSelectMode(true) }) {
-                                Text("Select")
-                            }
-                        }
+                        skipped.add("${entry.fileName}: ${entry.skippedReason}")
                     }
-                }
-
-                if (uiState.plugins.isEmpty()) {
-                    item(key = "empty") {
-                        Text(
-                            "No plugins installed yet. Import a .json plugin file or a .zip archive to get started.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                    }
-                }
-
-                if (uiState.activePlugins.isNotEmpty()) {
-                    item(key = "active_header") {
-                        Text(
-                            "Active",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
-                    items(uiState.activePlugins, key = { "active_" + it.definition.id }) { plugin ->
-                        PluginCard(
-                            plugin = plugin,
-                            multiSelect = uiState.isMultiSelectMode,
-                            selected = plugin.definition.id in uiState.selectedIds,
-                            onToggleEnabled = { viewModel.setPluginEnabled(plugin.definition.id, it) },
-                            onToggleSelected = { viewModel.toggleSelected(plugin.definition.id) },
-                            onTap = { optionsModalPlugin = plugin }
-                        )
-                    }
-                }
-
-                item(key = "divider") {
-                    DisabledSectionDivider(
-                        sortMode = uiState.disabledSortMode,
-                        onSortModeChange = { viewModel.setDisabledSortMode(it) }
-                    )
-                }
-
-                if (uiState.disabledPlugins.isEmpty() && uiState.activePlugins.isNotEmpty()) {
-                    item(key = "disabled_empty") {
-                        Text(
-                            "No disabled plugins.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-                    }
-                }
-
-                items(uiState.disabledPlugins, key = { "disabled_" + it.definition.id }) { plugin ->
-                    PluginCard(
-                        plugin = plugin,
-                        multiSelect = uiState.isMultiSelectMode,
-                        selected = plugin.definition.id in uiState.selectedIds,
-                        onToggleEnabled = { viewModel.setPluginEnabled(plugin.definition.id, it) },
-                        onToggleSelected = { viewModel.toggleSelected(plugin.definition.id) },
-                        onTap = { optionsModalPlugin = plugin }
-                    )
                 }
             }
+            val summary = buildString {
+                append("Imported $successCount plugin${if (successCount == 1) "" else "s"} successfully")
+                if (skipped.isNotEmpty()) append(", ${skipped.size} skipped")
+            }
+            _uiState.update { it.copy(batchImportSummary = summary) }
+            if (successCount > 0) dualPlayerEngine.refreshAudioFxPluginChain()
         }
     }
 
-    if (uiState.isMultiSelectMode && !uiState.isArrangeMode) {
-        BatchActionBar(
-            selectedCount = uiState.selectedIds.size,
-            onEnable = { viewModel.batchSetEnabled(uiState.selectedIds, true) },
-            onDisable = { viewModel.batchSetEnabled(uiState.selectedIds, false) },
-            onDeleteRequest = { pendingBatchDelete = true }
-        )
+    fun dismissBatchImportSummary() {
+        _uiState.update { it.copy(batchImportSummary = null) }
     }
 
-    uiState.importError?.let { error ->
-        AlertDialog(
-            onDismissRequest = viewModel::dismissError,
-            confirmButton = { Button(onClick = viewModel::dismissError) { Text("OK") } },
-            title = { Text("Import failed") },
-            text = { Text(error) }
-        )
-    }
-
-    uiState.batchImportSummary?.let { summary ->
-        AlertDialog(
-            onDismissRequest = viewModel::dismissBatchImportSummary,
-            confirmButton = { Button(onClick = viewModel::dismissBatchImportSummary) { Text("OK") } },
-            title = { Text("Import complete") },
-            text = { Text(summary) }
-        )
-    }
-
-    if (pendingBatchDelete) {
-        AlertDialog(
-            onDismissRequest = { pendingBatchDelete = false },
-            title = { Text("Delete ${uiState.selectedIds.size} plugin(s)?") },
-            text = { Text("This permanently removes the selected plugin files. This can't be undone.") },
-            confirmButton = {
-                Button(onClick = {
-                    viewModel.batchDelete(uiState.selectedIds)
-                    pendingBatchDelete = false
-                }) { Text("Delete") }
-            },
-            dismissButton = { TextButton(onClick = { pendingBatchDelete = false }) { Text("Cancel") } }
-        )
-    }
-
-    optionsModalPlugin?.let { plugin ->
-        PluginOptionsModal(
-            plugin = plugin,
-            onDismiss = { optionsModalPlugin = null },
-            onDelete = {
-                viewModel.deletePlugin(plugin.definition.id)
-                optionsModalPlugin = null
-            }
-        )
-    }
-
-    CollapsibleCommonTopBar(
-        title = if (uiState.isArrangeMode) "Arrange Plugins" else "Plugin Manager",
-        collapseFraction = 1f,
-        headerHeight = topBarHeight,
-        onBackClick = {
-            if (uiState.isArrangeMode) viewModel.setArrangeMode(false) else navController.popBackStack()
-        },
-        collapsedTitleStartPadding = 72.dp
-    )
-}
-
-@Composable
-private fun PluginCard(
-    plugin: PluginUiModel,
-    multiSelect: Boolean,
-    selected: Boolean,
-    onToggleEnabled: (Boolean) -> Unit,
-    onToggleSelected: () -> Unit,
-    onTap: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (multiSelect) Modifier.pointerInput(plugin.definition.id) {
-                    androidx.compose.foundation.gestures.detectTapGestures(onTap = { onToggleSelected() })
-                } else Modifier.pointerInput(plugin.definition.id) {
-                    androidx.compose.foundation.gestures.detectTapGestures(onTap = { onTap() })
-                }
-            ),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(plugin.definition.name, style = MaterialTheme.typography.titleMedium)
-                if (plugin.definition.description.isNotBlank()) {
-                    Text(plugin.definition.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            if (multiSelect) {
-                Icon(
-                    imageVector = if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = if (selected) "Selected" else "Not selected",
-                    tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                androidx.compose.material3.Switch(
-                    checked = plugin.enabled,
-                    onCheckedChange = onToggleEnabled
-                )
-            }
+    fun deletePlugin(pluginId: String) {
+        viewModelScope.launch {
+            // Only rebuild if the deleted plugin was actually enabled (i.e. actually
+            // processing audio right now). Deleting an already-disabled plugin changes
+            // nothing audible, so skip the pause entirely and let it drop out on the
+            // next natural rebuild (song change, Hi-Fi toggle, etc).
+            val wasEnabled = pluginStateHolder.isEnabled(pluginId)
+            pluginRepository.deletePlugin(pluginId)
+            if (wasEnabled) dualPlayerEngine.refreshAudioFxPluginChain()
         }
     }
-}
 
-@Composable
-private fun DisabledSectionDivider(
-    sortMode: DisabledSortMode,
-    onSortModeChange: (DisabledSortMode) -> Unit
-) {
-    var menuOpen by remember { mutableStateOf(false) }
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp),
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            "Disabled",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Box {
-            TextButton(onClick = { menuOpen = true }) {
-                Icon(Icons.Rounded.Sort, contentDescription = null, modifier = Modifier.size(16.dp))
-                androidx.compose.foundation.layout.Spacer(Modifier.padding(2.dp))
-                Text(
-                    when (sortMode) {
-                        DisabledSortMode.DATE_NEWEST -> "Newest"
-                        DisabledSortMode.DATE_OLDEST -> "Oldest"
-                        DisabledSortMode.ALPHA_AZ -> "A–Z"
-                        DisabledSortMode.ALPHA_ZA -> "Z–A"
-                    }
-                )
-            }
-            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                DropdownMenuItem(text = { Text("Date Added (Newest)") }, onClick = { onSortModeChange(DisabledSortMode.DATE_NEWEST); menuOpen = false })
-                DropdownMenuItem(text = { Text("Date Added (Oldest)") }, onClick = { onSortModeChange(DisabledSortMode.DATE_OLDEST); menuOpen = false })
-                DropdownMenuItem(text = { Text("Alphabetical (A–Z)") }, onClick = { onSortModeChange(DisabledSortMode.ALPHA_AZ); menuOpen = false })
-                DropdownMenuItem(text = { Text("Alphabetical (Z–A)") }, onClick = { onSortModeChange(DisabledSortMode.ALPHA_ZA); menuOpen = false })
-            }
+    fun movePlugin(pluginId: String, delta: Int) {
+        viewModelScope.launch {
+            val current = _uiState.value.plugins.map { it.definition.id }.toMutableList()
+            val index = current.indexOf(pluginId)
+            val newIndex = (index + delta).coerceIn(0, current.size - 1)
+            if (index == -1 || index == newIndex) return@launch
+            current.removeAt(index)
+            current.add(newIndex, pluginId)
+            pluginRepository.setPluginOrder(current)
         }
     }
-}
 
-@Composable
-private fun BatchActionBar(
-    selectedCount: Int,
-    onEnable: () -> Unit,
-    onDisable: () -> Unit,
-    onDeleteRequest: () -> Unit
-) {
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(androidx.compose.ui.Alignment.BottomCenter)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-            shape = RoundedCornerShape(20.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-            ) {
-                Text("$selectedCount selected", style = MaterialTheme.typography.bodyMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = onEnable, enabled = selectedCount > 0) { Text("Enable") }
-                    TextButton(onClick = onDisable, enabled = selectedCount > 0) { Text("Disable") }
-                    TextButton(onClick = onDeleteRequest, enabled = selectedCount > 0) {
-                        Text("Delete", color = MaterialTheme.colorScheme.error)
-                    }
-                }
-            }
+    /** Commits a full new top-level plugin order (id list across ALL plugins,
+     * enabled and disabled) after a drag-and-drop reorder in Arrange mode. */
+    fun commitPluginOrder(orderedIds: List<String>) {
+        viewModelScope.launch { pluginRepository.setPluginOrder(orderedIds) }
+    }
+
+    fun setArrangeMode(enabled: Boolean) {
+        _uiState.update { it.copy(isArrangeMode = enabled) }
+    }
+
+    fun setDisabledSortMode(mode: DisabledSortMode) {
+        _uiState.update { it.copy(disabledSortMode = mode) }
+    }
+
+    fun setMultiSelectMode(enabled: Boolean) {
+        _uiState.update { it.copy(isMultiSelectMode = enabled, selectedIds = if (enabled) it.selectedIds else emptySet()) }
+    }
+
+    fun toggleSelected(pluginId: String) {
+        _uiState.update { state ->
+            val next = state.selectedIds.toMutableSet()
+            if (!next.add(pluginId)) next.remove(pluginId)
+            state.copy(selectedIds = next)
         }
     }
-}
 
-@Composable
-private fun PluginOptionsModal(
-    plugin: PluginUiModel,
-    onDismiss: () -> Unit,
-    onDelete: () -> Unit
-) {
-    var confirmingDelete by remember { mutableStateOf(false) }
-    val sizeKb = plugin.fileSizeBytes / 1024f
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(plugin.definition.name) },
-        text = {
-            Column {
-                if (plugin.definition.description.isNotBlank()) {
-                    Text(plugin.definition.description, style = MaterialTheme.typography.bodyMedium)
-                    androidx.compose.foundation.layout.Spacer(Modifier.padding(top = 6.dp))
-                }
-                Text(
-                    "Author: ${plugin.definition.author.ifBlank { "Unknown" }}",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text("Version: ${plugin.definition.version}", style = MaterialTheme.typography.bodySmall)
-                Text("File size: ${"%.1f".format(sizeKb)} KB", style = MaterialTheme.typography.bodySmall)
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { confirmingDelete = true }) {
-                Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                androidx.compose.foundation.layout.Spacer(Modifier.padding(3.dp))
-                Text("Delete Plugin", color = MaterialTheme.colorScheme.error)
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } }
-    )
-
-    if (confirmingDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmingDelete = false },
-            title = { Text("Delete \"${plugin.definition.name}\"?") },
-            text = { Text("This permanently removes the plugin file. This can't be undone.") },
-            confirmButton = { Button(onClick = onDelete) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = { confirmingDelete = false }) { Text("Cancel") } }
-        )
+    fun selectAll() {
+        _uiState.update { it.copy(selectedIds = it.plugins.map { p -> p.definition.id }.toSet()) }
     }
-}
 
-/** Arrange mode: a dedicated full-list view of the active (enabled) plugins in
- * their exact DSP execution order, reorderable via drag handle. This is
- * deliberately separate from the main list — the audio topology order only
- * ever applies to enabled plugins, so disabled ones don't appear here.
- * Uses the same sh.calvin.reorderable library already proven out in
- * ReorderPresetsSheet, instead of a hand-rolled drag detector. */
-@Composable
-private fun ArrangePluginsList(
-    topBarHeight: androidx.compose.ui.unit.Dp,
-    activePlugins: List<PluginUiModel>,
-    onCommitOrder: (List<String>) -> Unit
-) {
-    var items by remember(activePlugins) { mutableStateOf(activePlugins) }
-    val listState = rememberLazyListState()
-    val reorderableState = rememberReorderableLazyListState(
-        onMove = { from, to ->
-            items = items.toMutableList().apply { add(to.index, removeAt(from.index)) }
-        },
-        lazyListState = listState
-    )
+    fun clearSelection() {
+        _uiState.update { it.copy(selectedIds = emptySet()) }
+    }
 
-    LazyColumn(
-        state = listState,
-        contentPadding = PaddingValues(
-            top = topBarHeight + 12.dp,
-            bottom = 48.dp,
-            start = 16.dp,
-            end = 16.dp
-        ),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        item(key = "arrange_hint") {
-            Text(
-                "This is the exact signal chain order. Drag by the handle to reorder.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
+    /** Enables/disables every selected plugin, then rebuilds the audio graph
+     * exactly once at the end — a single atomic transaction instead of one
+     * rebuild per plugin, so a 10-plugin batch doesn't cause 10 audio pauses. */
+    fun batchSetEnabled(pluginIds: Set<String>, enabled: Boolean) {
+        viewModelScope.launch {
+            pluginIds.forEach { id -> pluginRepository.setPluginEnabled(id, enabled) }
+            dualPlayerEngine.refreshAudioFxPluginChain()
+            _uiState.update { it.copy(isMultiSelectMode = false, selectedIds = emptySet()) }
         }
-        items(items, key = { it.definition.id }) { plugin ->
-            ReorderableItem(reorderableState, key = plugin.definition.id) { isDragging ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isDragging) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLow
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(plugin.definition.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        Icon(
-                            Icons.Rounded.DragHandle,
-                            contentDescription = "Drag to reorder",
-                            modifier = Modifier.size(28.dp).draggableHandle(
-                                onDragStopped = { onCommitOrder(items.map { it.definition.id }) }
-                            )
-                        )
-                    }
-                }
-            }
+    }
+
+    /** Deletes every selected plugin, then rebuilds the audio graph exactly once
+     * — same atomic-batch reasoning as batchSetEnabled. */
+    fun batchDelete(pluginIds: Set<String>) {
+        viewModelScope.launch {
+            val anyWasEnabled = pluginIds.any { pluginStateHolder.isEnabled(it) }
+            pluginIds.forEach { id -> pluginRepository.deletePlugin(id) }
+            if (anyWasEnabled) dualPlayerEngine.refreshAudioFxPluginChain()
+            _uiState.update { it.copy(isMultiSelectMode = false, selectedIds = emptySet()) }
         }
+    }
+
+    fun resetToDefaults(pluginId: String) {
+        val plugin = _uiState.value.plugins.find { it.definition.id == pluginId } ?: return
+        // Clear in-memory live state synchronously first (cheap, no I/O) so the
+        // audio thread reflects defaults instantly, then persist in one batch.
+        plugin.definition.chain.forEach { node -> node.params.keys.forEach { key ->
+            pluginStateHolder.paramValues.remove("$pluginId:$key")
+            pluginStateHolder.paramOverridden.remove("$pluginId:$key")
+        } }
+        plugin.definition.macros.forEach { macro -> pluginStateHolder.macroValues.remove("$pluginId:${macro.id}") }
+        plugin.definition.chain.forEachIndexed { i, node -> pluginStateHolder.nodeEnabledMap.remove("$pluginId:${node.effectiveId(i)}") }
+        pluginStateHolder.masterOverrides.remove("$pluginId:outputGainDb")
+        pluginStateHolder.masterOverrides.remove("$pluginId:dryWetMix")
+
+        viewModelScope.launch { pluginRepository.resetPluginToDefaults(plugin.definition) }
+    }
+
+    fun dismissError() {
+        _uiState.update { it.copy(importError = null) }
     }
 }
