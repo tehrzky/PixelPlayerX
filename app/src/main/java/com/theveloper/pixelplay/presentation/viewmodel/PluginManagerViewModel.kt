@@ -110,10 +110,11 @@ class PluginManagerViewModel @Inject constructor(
     }
 
     fun setPluginEnabled(pluginId: String, enabled: Boolean) {
-        viewModelScope.launch {
-            pluginRepository.setPluginEnabled(pluginId, enabled)
-            dualPlayerEngine.refreshAudioFxPluginChain()
-        }
+        // No rebuild needed here — PluginAudioProcessor already reads enabled state
+        // live every audio buffer via PluginStateHolder, so this takes effect
+        // instantly with zero rebuild pause. The rebuild call I added here in an
+        // earlier pass was unnecessary and was itself a source of avoidable pauses.
+        viewModelScope.launch { pluginRepository.setPluginEnabled(pluginId, enabled) }
     }
 
     fun setPluginParamLive(pluginId: String, key: String, value: Float) {
@@ -157,8 +158,13 @@ class PluginManagerViewModel @Inject constructor(
 
     fun deletePlugin(pluginId: String) {
         viewModelScope.launch {
+            // Only rebuild if the deleted plugin was actually enabled (i.e. actually
+            // processing audio right now). Deleting an already-disabled plugin changes
+            // nothing audible, so skip the pause entirely and let it drop out on the
+            // next natural rebuild (song change, Hi-Fi toggle, etc).
+            val wasEnabled = pluginStateHolder.isEnabled(pluginId)
             pluginRepository.deletePlugin(pluginId)
-            dualPlayerEngine.refreshAudioFxPluginChain()
+            if (wasEnabled) dualPlayerEngine.refreshAudioFxPluginChain()
         }
     }
 
