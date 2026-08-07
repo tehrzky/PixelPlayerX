@@ -108,6 +108,7 @@ class PluginRepository @Inject constructor(
             }
             prefs[floatPreferencesKey("plugin_${def.id}:master:outputGainDb")] = def.master.outputGainDb
             prefs[floatPreferencesKey("plugin_${def.id}:master:dryWetMix")] = def.master.dryWetMix
+            prefs[stringPreferencesKey("plugin_${def.id}:overridden_params")] = ""
         }
     }
 
@@ -146,5 +147,21 @@ class PluginRepository @Inject constructor(
 
     suspend fun setPluginParam(pluginId: String, paramKey: String, value: Float) {
         dataStore.edit { prefs -> prefs[floatPreferencesKey("plugin_$pluginId:$paramKey")] = value }
+    }
+
+    /** Persists which raw params the user explicitly overrode (vs. macro-driven),
+     * so "manual override beats macro" survives app restart instead of resetting. */
+    fun overriddenParamsFlow(pluginId: String): Flow<Set<String>> = dataStore.data.map { prefs ->
+        (prefs[stringPreferencesKey("plugin_$pluginId:overridden_params")] ?: "")
+            .split(",").filter { it.isNotBlank() }.toSet()
+    }
+
+    suspend fun setParamOverridden(pluginId: String, key: String, overridden: Boolean) {
+        val prefKey = stringPreferencesKey("plugin_$pluginId:overridden_params")
+        dataStore.edit { prefs ->
+            val current = (prefs[prefKey] ?: "").split(",").filter { it.isNotBlank() }.toMutableSet()
+            if (overridden) current.add(key) else current.remove(key)
+            prefs[prefKey] = current.joinToString(",")
+        }
     }
 }
