@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+enum class DisabledSortMode { DATE_NEWEST, DATE_OLDEST, ALPHA_AZ, ALPHA_ZA }
+
 data class PluginUiModel(
     val definition: PluginDefinition,
     val enabled: Boolean = true,
@@ -21,13 +23,38 @@ data class PluginUiModel(
     val macroValues: Map<String, Float> = emptyMap(),
     val nodeEnabled: Map<String, Boolean> = emptyMap(),
     val outputGainDb: Float = 0f,
-    val dryWetMix: Float = 100f
+    val dryWetMix: Float = 100f,
+    val fileSizeBytes: Long = 0L,
+    val dateAdded: Long = 0L
 )
 
 data class PluginManagerUiState(
     val plugins: List<PluginUiModel> = emptyList(),
-    val importError: String? = null
-)
+    val importError: String? = null,
+    val disabledSortMode: DisabledSortMode = DisabledSortMode.DATE_NEWEST,
+    val isMultiSelectMode: Boolean = false,
+    val selectedIds: Set<String> = emptySet(),
+    val isArrangeMode: Boolean = false,
+    val batchImportSummary: String? = null
+) {
+    /** Enabled plugins in strict DSP execution order — this is the actual audio
+     * topology, so it is never re-sorted automatically. Only manual drag reorder
+     * (Arrange mode) is allowed to change this order. */
+    val activePlugins: List<PluginUiModel> get() = plugins.filter { it.enabled }
+
+    /** Disabled plugins, ordered by whichever sort the user picked in the divider
+     * menu. This list has no bearing on audio topology since none of these are
+     * hooked into the DSP graph. */
+    val disabledPlugins: List<PluginUiModel> get() {
+        val disabled = plugins.filterNot { it.enabled }
+        return when (disabledSortMode) {
+            DisabledSortMode.DATE_NEWEST -> disabled.sortedByDescending { it.dateAdded }
+            DisabledSortMode.DATE_OLDEST -> disabled.sortedBy { it.dateAdded }
+            DisabledSortMode.ALPHA_AZ -> disabled.sortedBy { it.definition.name.lowercase() }
+            DisabledSortMode.ALPHA_ZA -> disabled.sortedByDescending { it.definition.name.lowercase() }
+        }
+    }
+}
 
 @HiltViewModel
 class PluginManagerViewModel @Inject constructor(
@@ -56,7 +83,8 @@ class PluginManagerViewModel @Inject constructor(
                             macroValues = def.macros.associate { it.id to it.default },
                             nodeEnabled = def.chain.mapIndexed { i, n -> n.effectiveId(i) to true }.toMap(),
                             outputGainDb = def.master.outputGainDb,
-                            dryWetMix = def.master.dryWetMix
+                            dryWetMix = def.master.dryWetMix,
+                            fileSizeBytes = pluginRepository.pluginFileSizeBytes(def.id)
                         )
                     })
                 }
@@ -65,6 +93,11 @@ class PluginManagerViewModel @Inject constructor(
                     launch {
                         pluginRepository.pluginEnabledFlow(def.id).collect { enabled ->
                             updatePlugin(def.id) { it.copy(enabled = enabled) }
+                        }
+                    }
+                    launch {
+                        pluginRepository.dateAddedFlow(def.id).collect { added ->
+                            updatePlugin(def.id) { it.copy(dateAdded = added) }
                         }
                     }
                     def.chain.forEach { node -> node.params.forEach { (key, paramDef) ->
@@ -172,6 +205,42 @@ class PluginManagerViewModel @Inject constructor(
         }
     }
 
+    /** Handles both multi-selected .json files and .zip archives in one pass.
+     * Every source is parsed/validated first; the audio graph rebuilds exactly
+     * once at the end regardless of how many plugins came in (batch-imported
+     * plugins always land disabled, so in practice this rebuild is a no-op for
+     * topology — it only exists to be safe if a rebuild happens to coincide). */
+    fun importBatch(sources: List<Pair<String, ByteArray>>) {
+        viewModelScope.launch {
+            var successCount = 0
+            val skipped = mutableListOf<String>()
+            sources.forEach { (fileName, bytes) ->
+                pluginRepository.parseBatchImportSource(fileName, bytes).forEach { entry ->
+                    if (entry.rawJson != null) {
+                        try {
+                            pluginRepository.importPlugin(entry.rawJson)
+                            successCount++
+                        } catch (e: IllegalArgumentException) {
+                            skipped.add("${entry.fileName}: ${e.message}")
+                        }
+                    } else {
+                        skipped.add("${entry.fileName}: ${entry.skippedReason}")
+                    }
+                }
+            }
+            val summary = buildString {
+                append("Imported $successCount plugin${if (successCount == 1) "" else "s"} successfully")
+                if (skipped.isNotEmpty()) append(", ${skipped.size} skipped")
+            }
+            _uiState.update { it.copy(batchImportSummary = summary) }
+            if (successCount > 0) dualPlayerEngine.refreshAudioFxPluginChain()
+        }
+    }
+
+    fun dismissBatchImportSummary() {
+        _uiState.update { it.copy(batchImportSummary = null) }
+    }
+
     fun deletePlugin(pluginId: String) {
         viewModelScope.launch {
             // Only rebuild if the deleted plugin was actually enabled (i.e. actually
@@ -193,6 +262,62 @@ class PluginManagerViewModel @Inject constructor(
             current.removeAt(index)
             current.add(newIndex, pluginId)
             pluginRepository.setPluginOrder(current)
+        }
+    }
+
+    /** Commits a full new top-level plugin order (id list across ALL plugins,
+     * enabled and disabled) after a drag-and-drop reorder in Arrange mode. */
+    fun commitPluginOrder(orderedIds: List<String>) {
+        viewModelScope.launch { pluginRepository.setPluginOrder(orderedIds) }
+    }
+
+    fun setArrangeMode(enabled: Boolean) {
+        _uiState.update { it.copy(isArrangeMode = enabled) }
+    }
+
+    fun setDisabledSortMode(mode: DisabledSortMode) {
+        _uiState.update { it.copy(disabledSortMode = mode) }
+    }
+
+    fun setMultiSelectMode(enabled: Boolean) {
+        _uiState.update { it.copy(isMultiSelectMode = enabled, selectedIds = if (enabled) it.selectedIds else emptySet()) }
+    }
+
+    fun toggleSelected(pluginId: String) {
+        _uiState.update { state ->
+            val next = state.selectedIds.toMutableSet()
+            if (!next.add(pluginId)) next.remove(pluginId)
+            state.copy(selectedIds = next)
+        }
+    }
+
+    fun selectAll() {
+        _uiState.update { it.copy(selectedIds = it.plugins.map { p -> p.definition.id }.toSet()) }
+    }
+
+    fun clearSelection() {
+        _uiState.update { it.copy(selectedIds = emptySet()) }
+    }
+
+    /** Enables/disables every selected plugin, then rebuilds the audio graph
+     * exactly once at the end — a single atomic transaction instead of one
+     * rebuild per plugin, so a 10-plugin batch doesn't cause 10 audio pauses. */
+    fun batchSetEnabled(pluginIds: Set<String>, enabled: Boolean) {
+        viewModelScope.launch {
+            pluginIds.forEach { id -> pluginRepository.setPluginEnabled(id, enabled) }
+            dualPlayerEngine.refreshAudioFxPluginChain()
+            _uiState.update { it.copy(isMultiSelectMode = false, selectedIds = emptySet()) }
+        }
+    }
+
+    /** Deletes every selected plugin, then rebuilds the audio graph exactly once
+     * — same atomic-batch reasoning as batchSetEnabled. */
+    fun batchDelete(pluginIds: Set<String>) {
+        viewModelScope.launch {
+            val anyWasEnabled = pluginIds.any { pluginStateHolder.isEnabled(it) }
+            pluginIds.forEach { id -> pluginRepository.deletePlugin(id) }
+            if (anyWasEnabled) dualPlayerEngine.refreshAudioFxPluginChain()
+            _uiState.update { it.copy(isMultiSelectMode = false, selectedIds = emptySet()) }
         }
     }
 
