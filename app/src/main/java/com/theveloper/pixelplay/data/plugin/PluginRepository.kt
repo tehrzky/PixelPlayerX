@@ -6,15 +6,27 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.zip.ZipInputStream
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** One parsed entry out of a batch import (multi-file .json select, or a .zip
+ * archive). "skipped" carries a human-readable reason when a file wasn't a
+ * valid plugin, so the batch summary dialog can show the user what happened. */
+data class BatchImportEntry(
+    val fileName: String,
+    val rawJson: String? = null,
+    val skippedReason: String? = null
+)
 
 @Singleton
 class PluginRepository @Inject constructor(
@@ -37,6 +49,8 @@ class PluginRepository @Inject constructor(
     private object Keys {
         val PLUGIN_ORDER = stringPreferencesKey("audio_fx_plugin_order")
     }
+
+    private fun dateAddedKey(pluginId: String) = longPreferencesKey("plugin_$pluginId:date_added")
 
     fun parseAndValidate(rawJson: String): PluginDefinition {
         val def = try {
@@ -61,11 +75,52 @@ class PluginRepository @Inject constructor(
         dataStore.edit { prefs ->
             val order = (prefs[Keys.PLUGIN_ORDER] ?: "").split(",").filter { it.isNotBlank() }
             if (def.id !in order) prefs[Keys.PLUGIN_ORDER] = (order + def.id).joinToString(",")
+            // Keep the original date-added if this id already existed (a re-import
+            // is an update, not a fresh add) — only stamp it the first time.
+            if (prefs[dateAddedKey(def.id)] == null) prefs[dateAddedKey(def.id)] = System.currentTimeMillis()
         }
         // Newly imported plugins start disabled — avoid an unexpected volume/
         // processing shift on import until the user explicitly turns it on.
         setPluginEnabled(def.id, false)
         return def
+    }
+
+    /** Parses raw bytes from a file picker selection into batch entries. If the
+     * bytes are a .zip archive, extracts every .json entry inside; otherwise
+     * treats the whole thing as one plugin file. Never throws — invalid entries
+     * come back with a skippedReason instead, for the batch summary dialog. */
+    fun parseBatchImportSource(fileName: String, bytes: ByteArray): List<BatchImportEntry> {
+        val looksLikeZip = fileName.endsWith(".zip", ignoreCase = true) ||
+            (bytes.size >= 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte())
+        if (!looksLikeZip) {
+            return listOf(BatchImportEntry(fileName = fileName, rawJson = bytes.toString(Charsets.UTF_8)))
+        }
+        val entries = mutableListOf<BatchImportEntry>()
+        try {
+            ZipInputStream(bytes.inputStream()).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    if (!entry.isDirectory && entry.name.endsWith(".json", ignoreCase = true)) {
+                        val out = ByteArrayOutputStream()
+                        zip.copyTo(out)
+                        entries.add(BatchImportEntry(fileName = entry.name, rawJson = out.toString("UTF-8")))
+                    }
+                    entry = zip.nextEntry
+                }
+            }
+        } catch (e: Exception) {
+            entries.add(BatchImportEntry(fileName = fileName, skippedReason = "Couldn't read .zip archive (${e.message ?: "corrupt file"})"))
+        }
+        if (entries.isEmpty()) {
+            entries.add(BatchImportEntry(fileName = fileName, skippedReason = "No .json plugin files found inside the archive"))
+        }
+        return entries
+    }
+
+    fun pluginFileSizeBytes(pluginId: String): Long = File(pluginsDir, "$pluginId.json").length()
+
+    fun dateAddedFlow(pluginId: String): Flow<Long> = dataStore.data.map { prefs ->
+        prefs[dateAddedKey(pluginId)] ?: 0L
     }
 
     fun macroFlow(pluginId: String, macroId: String, default: Float): Flow<Float> = dataStore.data.map { prefs ->
