@@ -48,6 +48,7 @@ data class PluginDefinition(
     val id: String,
     val name: String,
     val description: String = "",
+    val author: String = "",
     val version: Int = 1,
     val master: PluginMasterDef = PluginMasterDef(),
     val macros: List<PluginMacroDef> = emptyList(),
