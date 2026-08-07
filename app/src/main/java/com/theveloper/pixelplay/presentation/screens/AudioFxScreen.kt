@@ -335,6 +335,8 @@ private fun PluginCard(
                 onCheckedChange = onEnabledChange
             )
 
+            if (!model.enabled) return@Column
+
             DebouncedSlider(
                 label = "Mix",
                 externalValue = model.dryWetMix,
