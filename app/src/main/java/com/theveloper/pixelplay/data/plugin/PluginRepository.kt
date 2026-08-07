@@ -92,6 +92,25 @@ class PluginRepository @Inject constructor(
         dataStore.edit { prefs -> prefs[floatPreferencesKey("plugin_$pluginId:master:$key")] = value }
     }
 
+    /** Resets every param, macro, node-bypass, and master value for one plugin in a
+     * single atomic DataStore transaction — one disk write, one Flow emission,
+     * instead of ~20 separate ones (that fan-out was the actual cause of Reset lag). */
+    suspend fun resetPluginToDefaults(def: PluginDefinition) {
+        dataStore.edit { prefs ->
+            def.chain.forEach { node -> node.params.forEach { (key, paramDef) ->
+                prefs[floatPreferencesKey("plugin_${def.id}:$key")] = paramDef.default
+            } }
+            def.macros.forEach { macro ->
+                prefs[floatPreferencesKey("plugin_${def.id}:macro:${macro.id}")] = macro.default
+            }
+            def.chain.forEachIndexed { i, node ->
+                prefs[booleanPreferencesKey("plugin_${def.id}:node:${node.effectiveId(i)}:enabled")] = true
+            }
+            prefs[floatPreferencesKey("plugin_${def.id}:master:outputGainDb")] = def.master.outputGainDb
+            prefs[floatPreferencesKey("plugin_${def.id}:master:dryWetMix")] = def.master.dryWetMix
+        }
+    }
+
     fun listInstalledPlugins(): List<PluginDefinition> {
         val files = pluginsDir.listFiles { f -> f.extension == "json" } ?: emptyArray()
         return files.mapNotNull { f -> try { parseAndValidate(f.readText()) } catch (e: Exception) { null } }
