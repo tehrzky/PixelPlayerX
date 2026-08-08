@@ -180,8 +180,17 @@ fun AudioFxScreen(
                         modifier = Modifier.padding(vertical = 12.dp)
                     )
                 }
+            } else if (pluginState.activePlugins.isEmpty()) {
+                item(key = "no_active_plugins") {
+                    Text(
+                        "No plugins enabled. Turn one on in Manage Plugins above.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                }
             } else {
-                items(pluginState.plugins, key = { it.definition.id }) { pluginModel ->
+                items(pluginState.activePlugins, key = { it.definition.id }) { pluginModel ->
                     PluginCard(
                         model = pluginModel,
                         onEnabledChange = { pluginManagerViewModel.setPluginEnabled(pluginModel.definition.id, it) },
