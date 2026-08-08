@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -287,9 +288,9 @@ private fun PluginCard(
             .fillMaxWidth()
             .then(
                 if (multiSelect) Modifier.pointerInput(plugin.definition.id) {
-                    androidx.compose.foundation.gestures.detectTapGestures(onTap = { onToggleSelected() })
+                    detectTapGestures(onTap = { onToggleSelected() })
                 } else Modifier.pointerInput(plugin.definition.id) {
-                    androidx.compose.foundation.gestures.detectTapGestures(onTap = { onTap() })
+                    detectTapGestures(onTap = { onTap() })
                 }
             ),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
