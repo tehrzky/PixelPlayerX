@@ -82,7 +82,7 @@ class PluginAudioProcessor(
     override fun queueInput(inputBuffer: ByteBuffer) {
         if (!isActive()) return
         try {
-            if (!state.isEnabled(definition.id)) {
+            if (!state.isProcessingActive(definition.id)) {
                 outputBuffer = ensureOutputBuffer(inputBuffer.remaining())
                 outputBuffer.put(inputBuffer)
                 outputBuffer.flip()
