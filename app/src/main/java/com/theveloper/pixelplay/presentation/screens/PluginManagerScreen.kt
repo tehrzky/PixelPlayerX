@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -85,7 +86,7 @@ fun PluginManagerScreen(
         viewModel.importBatch(sources)
     }
 
-    Box(modifier = Modifier.fillMaxWidth()) {
+    Box(modifier = Modifier.fillMaxSize()) {
         if (uiState.isArrangeMode) {
             ArrangePluginsList(
                 topBarHeight = topBarHeight,
@@ -208,15 +209,16 @@ fun PluginManagerScreen(
                 }
             }
         }
-    }
 
-    if (uiState.isMultiSelectMode && !uiState.isArrangeMode) {
-        BatchActionBar(
-            selectedCount = uiState.selectedIds.size,
-            onEnable = { viewModel.batchSetEnabled(uiState.selectedIds, true) },
-            onDisable = { viewModel.batchSetEnabled(uiState.selectedIds, false) },
-            onDeleteRequest = { pendingBatchDelete = true }
-        )
+        if (uiState.isMultiSelectMode && !uiState.isArrangeMode) {
+            BatchActionBar(
+                modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
+                selectedCount = uiState.selectedIds.size,
+                onEnable = { viewModel.batchSetEnabled(uiState.selectedIds, true) },
+                onDisable = { viewModel.batchSetEnabled(uiState.selectedIds, false) },
+                onDeleteRequest = { pendingBatchDelete = true }
+            )
+        }
     }
 
     uiState.importError?.let { error ->
@@ -287,9 +289,9 @@ private fun PluginCard(
         modifier = Modifier
             .fillMaxWidth()
             .then(
-                if (multiSelect) Modifier.pointerInput(plugin.definition.id) {
+                if (multiSelect) Modifier.pointerInput(plugin.definition.id, multiSelect) {
                     detectTapGestures(onTap = { onToggleSelected() })
-                } else Modifier.pointerInput(plugin.definition.id) {
+                } else Modifier.pointerInput(plugin.definition.id, multiSelect) {
                     detectTapGestures(onTap = { onTap() })
                 }
             ),
@@ -307,17 +309,22 @@ private fun PluginCard(
                     Text(plugin.definition.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (multiSelect) {
-                Icon(
-                    imageVector = if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = if (selected) "Selected" else "Not selected",
-                    tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                androidx.compose.material3.Switch(
-                    checked = plugin.enabled,
-                    onCheckedChange = onToggleEnabled
-                )
+            Box(
+                modifier = Modifier.width(52.dp),
+                contentAlignment = androidx.compose.ui.Alignment.CenterEnd
+            ) {
+                if (multiSelect) {
+                    Icon(
+                        imageVector = if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                        contentDescription = if (selected) "Selected" else "Not selected",
+                        tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    androidx.compose.material3.Switch(
+                        checked = plugin.enabled,
+                        onCheckedChange = onToggleEnabled
+                    )
+                }
             }
         }
     }
@@ -364,16 +371,15 @@ private fun DisabledSectionDivider(
 
 @Composable
 private fun BatchActionBar(
+    modifier: Modifier = Modifier,
     selectedCount: Int,
     onEnable: () -> Unit,
     onDisable: () -> Unit,
     onDeleteRequest: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxWidth()) {
         Card(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxWidth()
-                .align(androidx.compose.ui.Alignment.BottomCenter)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
             shape = RoundedCornerShape(20.dp)
@@ -390,10 +396,9 @@ private fun BatchActionBar(
                     TextButton(onClick = onDeleteRequest, enabled = selectedCount > 0) {
                         Text("Delete", color = MaterialTheme.colorScheme.error)
                     }
-                }
+              }
             }
         }
-    }
 }
 
 @Composable
@@ -473,24 +478,29 @@ private fun ArrangePluginsList(
         lazyListState = listState
     )
 
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            "This is the exact signal chain order. Drag by the handle to reorder.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = topBarHeight + 12.dp, start = 16.dp, end = 16.dp, bottom = 4.dp)
+        )
     LazyColumn(
         state = listState,
         contentPadding = PaddingValues(
-            top = topBarHeight + 12.dp,
+            top = 0.dp,
             bottom = 48.dp,
             start = 16.dp,
             end = 16.dp
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item(key = "arrange_hint") {
-            Text(
-                "This is the exact signal chain order. Drag by the handle to reorder.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-        }
+        // Deliberately no header item in this LazyColumn — the reorderable
+        // library's onMove gives raw indices into this exact list, so any
+        // preceding header item shifts those indices by one relative to
+        // `items`, which was the second real cause of the drop-gesture crash
+        // (the first was the remember-key issue fixed earlier). The hint text
+        // above is now a plain sibling Text outside the LazyColumn instead.
         items(items, key = { it.definition.id }) { plugin ->
             ReorderableItem(reorderableState, key = plugin.definition.id) { isDragging ->
                 Card(
@@ -517,5 +527,6 @@ private fun ArrangePluginsList(
                 }
             }
         }
+    }
     }
 }
