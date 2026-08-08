@@ -196,6 +196,22 @@ class PluginRepository @Inject constructor(
         dataStore.edit { prefs -> prefs[booleanPreferencesKey("plugin_$pluginId:enabled")] = enabled }
     }
 
+    /** Separate from "enabled" above (that's the Plugin Manager master switch,
+     * controlling whether the card exists on the Audio FX page at all). This is
+     * the Audio FX page's own on-page bypass toggle — flipping it never touches
+     * Manager state or triggers a DSP graph rebuild, it's a live audio-thread
+     * bypass exactly like a node-level bypass, just at the whole-plugin level.
+     * Defaults to false: a plugin that's never been touched on the Audio FX
+     * page is bypassed there, satisfying "enabling in Manager must not also
+     * start processing audio." */
+    fun audioFxActiveFlow(pluginId: String): Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[booleanPreferencesKey("plugin_$pluginId:audiofx_active")] ?: false
+    }
+
+    suspend fun setAudioFxActive(pluginId: String, active: Boolean) {
+        dataStore.edit { prefs -> prefs[booleanPreferencesKey("plugin_$pluginId:audiofx_active")] = active }
+    }
+
     fun pluginParamFlow(pluginId: String, paramKey: String, default: Float): Flow<Float> = dataStore.data.map { prefs ->
         prefs[floatPreferencesKey("plugin_$pluginId:$paramKey")] ?: default
     }
