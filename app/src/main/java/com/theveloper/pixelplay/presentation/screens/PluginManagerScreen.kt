@@ -455,7 +455,16 @@ private fun ArrangePluginsList(
     activePlugins: List<PluginUiModel>,
     onCommitOrder: (List<String>) -> Unit
 ) {
-    var items by remember(activePlugins) { mutableStateOf(activePlugins) }
+    // No key here deliberately — this must NOT reset while a drag is in progress.
+    // activePlugins reshapes on every unrelated param/macro/master flow update
+    // elsewhere in the plugin system; keying on it caused the list to reset out
+    // from under an active drag gesture mid-gesture, leaving the reorder
+    // library's internal position tracking pointing at stale indices and
+    // crashing with IndexOutOfBoundsException on drop. Seeding once here means
+    // Arrange mode shows a frozen snapshot for the duration of the drag session
+    // — correct, since re-entering Arrange mode (leaving and coming back)
+    // naturally re-seeds from the latest state anyway.
+    var items by remember { mutableStateOf(activePlugins) }
     val listState = rememberLazyListState()
     val reorderableState = rememberReorderableLazyListState(
         onMove = { from, to ->
