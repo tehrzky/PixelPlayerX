@@ -572,6 +572,11 @@ class MusicService : MediaLibraryService() {
                             pluginStateHolder.enabledMap[def.id] = enabled
                         }
                     }
+                    serviceScope.launch {
+                        pluginRepository.audioFxActiveFlow(def.id).collect { active ->
+                            pluginStateHolder.audioFxActiveMap[def.id] = active
+                        }
+                    }
                     def.chain.forEach { node ->
                         node.params.forEach { (key, paramDef) ->
                             serviceScope.launch {
