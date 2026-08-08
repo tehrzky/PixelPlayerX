@@ -19,6 +19,7 @@ enum class DisabledSortMode { DATE_NEWEST, DATE_OLDEST, ALPHA_AZ, ALPHA_ZA }
 data class PluginUiModel(
     val definition: PluginDefinition,
     val enabled: Boolean = true,
+    val audioFxActive: Boolean = false,
     val paramValues: Map<String, Float> = emptyMap(),
     val macroValues: Map<String, Float> = emptyMap(),
     val nodeEnabled: Map<String, Boolean> = emptyMap(),
@@ -96,6 +97,11 @@ class PluginManagerViewModel @Inject constructor(
                         }
                     }
                     launch {
+                        pluginRepository.audioFxActiveFlow(def.id).collect { active ->
+                            updatePlugin(def.id) { it.copy(audioFxActive = active) }
+                        }
+                    }
+                    launch {
                         pluginRepository.dateAddedFlow(def.id).collect { added ->
                             updatePlugin(def.id) { it.copy(dateAdded = added) }
                         }
@@ -160,7 +166,22 @@ class PluginManagerViewModel @Inject constructor(
         // live every audio buffer via PluginStateHolder, so this takes effect
         // instantly with zero rebuild pause. The rebuild call I added here in an
         // earlier pass was unnecessary and was itself a source of avoidable pauses.
-        viewModelScope.launch { pluginRepository.setPluginEnabled(pluginId, enabled) }
+        viewModelScope.launch {
+            pluginRepository.setPluginEnabled(pluginId, enabled)
+            // Safety default: turning the Manager switch ON must never also turn
+            // audio processing on. The Audio FX page toggle always resets to off
+            // so nothing starts playing through the effect until the user
+            // deliberately switches it on there.
+            if (enabled) pluginRepository.setAudioFxActive(pluginId, false)
+        }
+    }
+
+    fun setAudioFxActiveLive(pluginId: String, active: Boolean) {
+        pluginStateHolder.audioFxActiveMap[pluginId] = active
+    }
+    fun setAudioFxActive(pluginId: String, active: Boolean) {
+        pluginStateHolder.audioFxActiveMap[pluginId] = active
+        viewModelScope.launch { pluginRepository.setAudioFxActive(pluginId, active) }
     }
 
     fun setPluginParamLive(pluginId: String, key: String, value: Float) {
@@ -304,7 +325,12 @@ class PluginManagerViewModel @Inject constructor(
      * rebuild per plugin, so a 10-plugin batch doesn't cause 10 audio pauses. */
     fun batchSetEnabled(pluginIds: Set<String>, enabled: Boolean) {
         viewModelScope.launch {
-            pluginIds.forEach { id -> pluginRepository.setPluginEnabled(id, enabled) }
+            pluginIds.forEach { id ->
+                pluginRepository.setPluginEnabled(id, enabled)
+                // Same safety default as the single-plugin path: batch-enabling
+                // must not batch-activate audio on every one of them at once.
+                if (enabled) pluginRepository.setAudioFxActive(id, false)
+            }
             dualPlayerEngine.refreshAudioFxPluginChain()
             _uiState.update { it.copy(isMultiSelectMode = false, selectedIds = emptySet()) }
         }
