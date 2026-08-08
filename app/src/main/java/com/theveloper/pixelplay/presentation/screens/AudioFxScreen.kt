@@ -193,7 +193,7 @@ fun AudioFxScreen(
                 items(pluginState.activePlugins, key = { it.definition.id }) { pluginModel ->
                     PluginCard(
                         model = pluginModel,
-                        onEnabledChange = { pluginManagerViewModel.setPluginEnabled(pluginModel.definition.id, it) },
+                        onEnabledChange = { pluginManagerViewModel.setAudioFxActive(pluginModel.definition.id, it) },
                         onParamChangeLive = { key, value -> pluginManagerViewModel.setPluginParamLive(pluginModel.definition.id, key, value) },
                         onParamChangeFinished = { key, value -> pluginManagerViewModel.setPluginParam(pluginModel.definition.id, key, value) },
                         onMacroChangeLive = { macroId, value -> pluginManagerViewModel.setMacroLive(pluginModel.definition.id, macroId, value) },
@@ -306,7 +306,7 @@ fun AudioFxScreen(
 @Composable
 private fun PluginCard(
     model: PluginUiModel,
-    onEnabledChange: (Boolean) -> Unit,
+    onEnabledChange: (Boolean) -> Unit, // wired to the Audio FX page's own bypass toggle, not the Manager switch
     onParamChangeLive: (String, Float) -> Unit,
     onParamChangeFinished: (String, Float) -> Unit,
     onMacroChangeLive: (String, Float) -> Unit,
@@ -340,11 +340,11 @@ private fun PluginCard(
             SwitchSettingItem(
                 title = model.definition.name,
                 subtitle = model.definition.description,
-                checked = model.enabled,
+               checked = model.audioFxActive,
                 onCheckedChange = onEnabledChange
             )
 
-            if (!model.enabled) return@Column
+            if (!model.audioFxActive) return@Column
 
             DebouncedSlider(
                 label = "Mix",
@@ -353,7 +353,7 @@ private fun PluginCard(
                 onValueChangeLive = { onMasterChangeLive("dryWetMix", it) },
                 onValueChangeFinished = { onMasterChangeFinished("dryWetMix", it) },
                 valueText = { v -> "${v.roundToInt()}%" },
-                enabled = model.enabled
+                enabled = model.audioFxActive
             )
             DebouncedSlider(
                 label = "Output Gain",
@@ -362,7 +362,7 @@ private fun PluginCard(
                 onValueChangeLive = { onMasterChangeLive("outputGainDb", it) },
                 onValueChangeFinished = { onMasterChangeFinished("outputGainDb", it) },
                 valueText = { v -> "${if (v >= 0) "+" else ""}${formatValue(v)}dB" },
-                enabled = model.enabled
+                enabled = model.audioFxActive
             )
 
             if (hasMacros) {
@@ -374,7 +374,7 @@ private fun PluginCard(
                         onValueChangeLive = { onMacroChangeLive(macro.id, it) },
                         onValueChangeFinished = { onMacroChangeFinished(macro.id, it) },
                         valueText = { v -> "${v.roundToInt()}%" },
-                        enabled = model.enabled
+                        enabled = model.audioFxActive
                     )
                 }
             }
@@ -408,7 +408,7 @@ private fun PluginCard(
                             onValueChangeLive = { onParamChangeLive(key, it) },
                             onValueChangeFinished = { onParamChangeFinished(key, it) },
                             valueText = { v -> if (paramDef.unit.isNotBlank()) "${formatValue(v)}${paramDef.unit}" else formatValue(v) },
-                            enabled = model.enabled && (model.nodeEnabled[nodeId] ?: true)
+                            enabled = model.audioFxActive && (model.nodeEnabled[nodeId] ?: true)
                         )
                     }
                 }
