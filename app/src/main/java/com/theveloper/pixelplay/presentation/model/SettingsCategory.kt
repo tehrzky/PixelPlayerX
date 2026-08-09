@@ -2,6 +2,7 @@ package com.theveloper.pixelplay.presentation.model
 
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DeveloperBoard
 import androidx.compose.material.icons.rounded.DeveloperMode
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -74,11 +75,17 @@ enum class SettingsCategory(
         subtitleRes = R.string.settings_category_equalizer_subtitle,
         icon = Icons.Rounded.GraphicEq
     ),
-    AUDIO_FX(
+   AUDIO_FX(
         id = "audio_fx",
         titleRes = R.string.audio_fx_title,
         subtitleRes = R.string.settings_category_audio_fx_subtitle,
         icon = Icons.Rounded.Tune
+    ),
+    CUSTOM_THEMES(
+        id = "custom_themes",
+        titleRes = R.string.settings_category_custom_themes_title,
+        subtitleRes = R.string.settings_category_custom_themes_subtitle,
+        icon = Icons.Rounded.DarkMode
     ),
     DEVICE_CAPABILITIES(
         id = "device_capabilities",
