@@ -212,8 +212,15 @@ fun PluginManagerScreen(
         }
 
         if (uiState.isMultiSelectMode && !uiState.isArrangeMode) {
+            // The Mini Player is composed at the MainActivity root, above (drawn
+            // after) this entire screen — nothing in here can out-z-order it, so
+            // instead of aligning flush to the bottom, this sits just above the
+            // Mini Player's own footprint using the same height constant the
+            // rest of the screen already uses for its list bottom padding.
             BatchActionBar(
-                modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
+                modifier = Modifier
+                    .align(androidx.compose.ui.Alignment.BottomCenter)
+                    .padding(bottom = MiniPlayerHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
                 selectedCount = uiState.selectedIds.size,
                 onEnable = { viewModel.batchSetEnabled(uiState.selectedIds, true) },
                 onDisable = { viewModel.batchSetEnabled(uiState.selectedIds, false) },
