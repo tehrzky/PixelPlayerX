@@ -52,6 +52,7 @@ sealed class Screen(val route: String) {
     object DeviceCapabilities : Screen("device_capabilities")
     object Equalizer : Screen("equalizer")
     object AudioFx : Screen("audio_fx")
+    object CustomThemes : Screen("custom_themes")
     object PluginManager : Screen("plugin_manager")
     object NeteaseDashboard : Screen("netease_dashboard")
     object QqMusicDashboard : Screen("qqmusic_dashboard")
