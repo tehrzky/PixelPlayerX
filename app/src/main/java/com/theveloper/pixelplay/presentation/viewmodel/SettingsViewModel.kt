@@ -56,6 +56,7 @@ data class SettingsUiState(
     val isLoadingDirectories: Boolean = false,
     val appLanguageTag: String = AppLanguage.SYSTEM.tag,
     val appThemeMode: String = AppThemeMode.FOLLOW_SYSTEM,
+    val customThemeMode: String = com.theveloper.pixelplay.data.preferences.CustomThemeMode.DEFAULT,
     val playerThemePreference: String = ThemePreference.ALBUM_ART,
     val albumArtPaletteStyle: AlbumArtPaletteStyle = AlbumArtPaletteStyle.default,
     val albumArtColorAccuracy: Int = AlbumArtColorAccuracy.DEFAULT,
@@ -565,6 +566,12 @@ class SettingsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            themePreferencesRepository.customThemeModeFlow.collect { mode ->
+                _uiState.update { it.copy(customThemeMode = mode) }
+            }
+        }
+
+        viewModelScope.launch {
             backupManager.getBackupHistory().collect { history ->
                 _uiState.update { it.copy(backupHistory = history) }
             }
@@ -928,6 +935,12 @@ class SettingsViewModel @Inject constructor(
     fun setAppThemeMode(mode: String) {
         viewModelScope.launch {
             themePreferencesRepository.setAppThemeMode(mode)
+        }
+    }
+
+    fun setCustomThemeMode(mode: String) {
+        viewModelScope.launch {
+            themePreferencesRepository.setCustomThemeMode(mode)
         }
     }
 
