@@ -1453,6 +1453,10 @@ fun SettingsCategoryScreen(
                             // Audio FX has its own screen, so this block is unreachable via standard navigation
                             // but required for exhaustiveness.
                         }
+                        SettingsCategory.CUSTOM_THEMES -> {
+                            // Custom Themes has its own screen, so this block is unreachable via standard
+                            // navigation but required for exhaustiveness.
+                        }
                         SettingsCategory.DEVICE_CAPABILITIES -> {
                             // Device Capabilities has its own screen
                         }
