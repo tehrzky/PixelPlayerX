@@ -566,6 +566,15 @@ class MusicService : MediaLibraryService() {
                 val installed = pluginRepository.listInstalledPlugins().associateBy { it.id }
                 val ordered = orderedIds.mapNotNull { installed[it] }
                 pluginStateHolder.activePlugins = ordered
+                // Cold-start fix: listInstalledPlugins() reads every plugin's JSON
+                // off disk, which is slower than the rest of service init — the
+                // audio chain can finish building (with zero plugin processors,
+                // since activePlugins was still empty) before this line runs.
+                // Nothing rebuilt the chain afterward, so a freshly loaded plugin
+                // silently never played until the user touched something in
+                // Plugin Manager (which happens to trigger a rebuild elsewhere).
+                // This call closes that gap.
+                engine.refreshAudioFxPluginChain()
                 ordered.forEach { def ->
                     serviceScope.launch {
                         pluginRepository.pluginEnabledFlow(def.id).collect { enabled ->
