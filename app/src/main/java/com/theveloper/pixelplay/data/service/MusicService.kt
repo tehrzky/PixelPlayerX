@@ -66,6 +66,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -562,7 +563,7 @@ class MusicService : MediaLibraryService() {
             // Load installed plugins ordered by user preference, and prime live state
             // for each one's enabled flag and every declared param — same cold-start
             // priming pattern as the built-in effects above.
-            pluginRepository.pluginOrderFlow.collect { orderedIds ->
+            pluginRepository.pluginOrderFlow.distinctUntilChanged().collect { orderedIds ->
                 val installed = pluginRepository.listInstalledPlugins().associateBy { it.id }
                 val ordered = orderedIds.mapNotNull { installed[it] }
                 pluginStateHolder.activePlugins = ordered
