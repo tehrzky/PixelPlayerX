@@ -12,7 +12,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
 import javax.inject.Inject
-import javax.inject.Singletonimport javax.inject.Singleton
+import javax.inject.Singleton
 
 @Singleton
 class ThemePreferencesRepository @Inject constructor(
