@@ -57,6 +57,8 @@ data class SettingsUiState(
     val appLanguageTag: String = AppLanguage.SYSTEM.tag,
     val appThemeMode: String = AppThemeMode.FOLLOW_SYSTEM,
     val customThemeMode: String = com.theveloper.pixelplay.data.preferences.CustomThemeMode.DEFAULT,
+    val savedPalettes: List<com.theveloper.pixelplay.data.preferences.SavedThemePalette> = emptyList(),
+    val activePaletteId: String? = null,
     val playerThemePreference: String = ThemePreference.ALBUM_ART,
     val albumArtPaletteStyle: AlbumArtPaletteStyle = AlbumArtPaletteStyle.default,
     val albumArtColorAccuracy: Int = AlbumArtColorAccuracy.DEFAULT,
@@ -572,6 +574,18 @@ class SettingsViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            themePreferencesRepository.savedPalettesFlow.collect { palettes ->
+                _uiState.update { it.copy(savedPalettes = palettes) }
+            }
+        }
+
+        viewModelScope.launch {
+            themePreferencesRepository.activePaletteIdFlow.collect { id ->
+                _uiState.update { it.copy(activePaletteId = id) }
+            }
+        }
+
+        viewModelScope.launch {
             backupManager.getBackupHistory().collect { history ->
                 _uiState.update { it.copy(backupHistory = history) }
             }
@@ -941,6 +955,24 @@ class SettingsViewModel @Inject constructor(
     fun setCustomThemeMode(mode: String) {
         viewModelScope.launch {
             themePreferencesRepository.setCustomThemeMode(mode)
+        }
+    }
+
+    fun saveAndActivatePalette(name: String, primaryColorArgb: Long, oledBlack: Boolean) {
+        viewModelScope.launch {
+            themePreferencesRepository.saveAndActivatePalette(name, primaryColorArgb, oledBlack)
+        }
+    }
+
+    fun selectPalette(id: String?) {
+        viewModelScope.launch {
+            themePreferencesRepository.setActivePaletteId(id)
+        }
+    }
+
+    fun deletePalette(id: String) {
+        viewModelScope.launch {
+            themePreferencesRepository.deletePalette(id)
         }
     }
 
