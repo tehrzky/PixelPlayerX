@@ -587,7 +587,20 @@ class MusicService : MediaLibraryService() {
                             pluginStateHolder.audioFxActiveMap[def.id] = active
                         }
                     }
-                    def.chain.forEach { node ->
+                    def.chain.forEachIndexed { i, node ->
+                        val nodeId = node.effectiveId(i)
+                        // This collector was missing entirely — nodeEnabledMap was
+                        // previously only ever written when a user manually flipped
+                        // a node's switch in the UI. On cold start, with no entry in
+                        // the map yet, isNodeEnabled() fell through to its default
+                        // and the node processed audio regardless of its persisted
+                        // "off" state, until touched once. This primes it from disk
+                        // the same way enabledMap/audioFxActiveMap already are.
+                        serviceScope.launch {
+                            pluginRepository.nodeEnabledFlow(def.id, nodeId).collect { enabled ->
+                                pluginStateHolder.nodeEnabledMap["${def.id}:$nodeId"] = enabled
+                            }
+                        }
                         node.params.forEach { (key, paramDef) ->
                             serviceScope.launch {
                                 pluginRepository.pluginParamFlow(def.id, key, paramDef.default).collect { value ->
