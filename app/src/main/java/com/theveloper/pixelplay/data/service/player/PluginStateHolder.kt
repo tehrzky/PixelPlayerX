@@ -27,7 +27,15 @@ class PluginStateHolder @Inject constructor() {
     // node when BOTH the Manager switch and the Audio FX page's own bypass
     // toggle are on. Manager-disabled always wins regardless of the page toggle.
     fun isProcessingActive(pluginId: String): Boolean = isEnabled(pluginId) && (audioFxActiveMap[pluginId] ?: false)
-    fun isNodeEnabled(pluginId: String, nodeId: String): Boolean = nodeEnabledMap["$pluginId:$nodeId"] ?: true
+    // Same reasoning as isEnabled() above: default to bypassed (not processing)
+    // during the brief async-load window on cold start, rather than defaulting
+    // to "on" and risking a moment of unbypassed audio through a node the user
+    // actually left off. Once the DataStore-backed collector's first value
+    // lands (a few ms later), this reflects the real persisted state — and for
+    // a node that's genuinely never been touched, that persisted read itself
+    // still defaults to true, so untouched/fresh nodes still end up enabled
+    // once loaded, this only affects the brief window before that happens.
+    fun isNodeEnabled(pluginId: String, nodeId: String): Boolean = nodeEnabledMap["$pluginId:$nodeId"] ?: false
     fun paramValue(pluginId: String, key: String, default: Float): Float = paramValues["$pluginId:$key"] ?: default
     fun macroValue(pluginId: String, macroId: String, default: Float): Float = macroValues["$pluginId:$macroId"] ?: default
     fun masterValue(pluginId: String, key: String, default: Float): Float = masterOverrides["$pluginId:$key"] ?: default
