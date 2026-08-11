@@ -243,6 +243,9 @@ class MainActivity : ComponentActivity() {
             val systemDarkTheme = isSystemInDarkTheme()
             val appThemeMode by themePreferencesRepository.appThemeModeFlow.collectAsStateWithLifecycle(initialValue = AppThemeMode.FOLLOW_SYSTEM)
             val customThemeMode by themePreferencesRepository.customThemeModeFlow.collectAsStateWithLifecycle(initialValue = com.theveloper.pixelplay.data.preferences.CustomThemeMode.DEFAULT)
+            val savedPalettes by themePreferencesRepository.savedPalettesFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+            val activePaletteId by themePreferencesRepository.activePaletteIdFlow.collectAsStateWithLifecycle(initialValue = null)
+            val activePalette = savedPalettes.find { it.id == activePaletteId }
             val showScrollbar by userPreferencesRepository.showScrollbarFlow.collectAsStateWithLifecycle(initialValue = true)
             val useDarkTheme = when (appThemeMode) {
                 AppThemeMode.DARK -> true
@@ -292,7 +295,8 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(LocalShowScrollbar provides showScrollbar) {
                 PixelPlayTheme(
                     darkTheme = useDarkTheme,
-                    isTuiTheme = customThemeMode == com.theveloper.pixelplay.data.preferences.CustomThemeMode.TUI_OLED
+                    isTuiTheme = customThemeMode == com.theveloper.pixelplay.data.preferences.CustomThemeMode.TUI_OLED,
+                    activePalette = activePalette
                 ) {
                     var contentVisible by remember { mutableStateOf(false) }
                     val contentAlpha by animateFloatAsState(
