@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import com.theveloper.pixelplay.presentation.viewmodel.ColorSchemePair
+import com.theveloper.pixelplay.data.preferences.SavedThemePalette
 import androidx.core.graphics.ColorUtils
 
 val LocalPixelPlayDarkTheme = staticCompositionLocalOf { false }
@@ -171,10 +172,11 @@ fun PixelPlayTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     colorSchemePairOverride: ColorSchemePair? = null,
     isTuiTheme: Boolean = false,
+    activePalette: SavedThemePalette? = null,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
-    val finalColorScheme = when {
+    val baseColorScheme = when {
         isTuiTheme -> TuiColorScheme
         colorSchemePairOverride == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             // Tema dinámico del sistema como prioridad si no hay override
@@ -192,6 +194,21 @@ fun PixelPlayTheme(
         // Fallback final a los defaults si no hay override ni dynamic colors aplicables
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
+    }
+    // A saved palette only applies on top of the Default theme, never over TUI
+    // (TUI is deliberately fixed/monochrome) and never over the album-art
+    // dynamic scheme (that's a different, existing customization axis).
+    val finalColorScheme = if (activePalette != null && !isTuiTheme && colorSchemePairOverride == null) {
+        val accent = Color(activePalette.primaryColorArgb.toInt())
+        baseColorScheme.copy(
+            primary = accent,
+            secondary = accent,
+            surfaceTint = accent,
+            background = if (activePalette.oledBlack) Color(0xFF000000) else baseColorScheme.background,
+            surface = if (activePalette.oledBlack) Color(0xFF000000) else baseColorScheme.surface
+        )
+    } else {
+        baseColorScheme
     }
 
     PixelPlayStatusBarStyle(
