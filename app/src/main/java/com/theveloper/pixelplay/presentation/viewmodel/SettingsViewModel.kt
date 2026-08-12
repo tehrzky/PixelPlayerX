@@ -984,6 +984,20 @@ class SettingsViewModel @Inject constructor(
             themePreferencesRepository.deletePalette(id)
         }
     }
+        fun importTheme(jsonString: String, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            val result = themePreferencesRepository.importTheme(jsonString)
+            if (result != null) {
+                onResult(true, result.second?.name ?: result.first)
+            } else {
+                onResult(false, null)
+            }
+        }
+    }
+
+    fun exportPalette(palette: com.theveloper.pixelplay.data.preferences.SavedThemePalette): String {
+        return themePreferencesRepository.exportPalette(palette)
+    }
 
     fun setAppLanguage(languageTag: String) {
         val normalized = AppLanguage.normalize(languageTag)
