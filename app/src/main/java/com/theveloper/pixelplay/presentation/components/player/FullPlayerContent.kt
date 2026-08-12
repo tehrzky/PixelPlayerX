@@ -232,47 +232,16 @@ fun FullPlayerContent(
     onRepeatToggle: () -> Unit,
     onFavoriteToggle: () -> Unit,
     ) {
-    var retainedSong by remember { mutableStateOf(currentSong) }
+        var retainedSong by remember { mutableStateOf(currentSong) }
     LaunchedEffect(currentSong?.id) {
         if (currentSong != null) {
             retainedSong = currentSong
         }
     }
-        // ─── TUI TERMINAL MODE ───
-    // When TUI theme is active, bypass the entire Material player and render
-    // the ASCII terminal interface instead. This keeps the normal player
-    // untouched for Default / custom palette modes.
-    val isTui by com.theveloper.pixelplay.ui.theme.LocalIsTuiTheme.current
-    if (isTui) {
-        val position by rememberUpdatedState(currentPositionProvider())
-        val total by rememberUpdatedState(totalDurationProvider())
-        val playing by rememberUpdatedState(isPlayingProvider())
-        val favorite by rememberUpdatedState(isFavoriteProvider())
-        val repeat by rememberUpdatedState(repeatModeProvider())
-        val shuffle by rememberUpdatedState(isShuffleEnabledProvider())
 
-        com.theveloper.pixelplay.presentation.components.tui.TuiPlayerContent(
-            song = song,
-            currentPosition = position,
-            totalDuration = total,
-            isPlaying = playing,
-            isFavorite = favorite,
-            repeatMode = repeat,
-            isShuffleEnabled = shuffle,
-            onPlayPause = onPlayPause,
-            onSeek = onSeek,
-            onNext = onNext,
-            onPrevious = onPrevious,
-            onCollapse = onCollapse,
-            onFavoriteToggle = onFavoriteToggle,
-            onShuffleToggle = onShuffleToggle,
-            onRepeatToggle = onRepeatToggle,
-            onShowQueueClicked = onShowQueueClicked
-        )
-        return
-    }
-    // ─────────────────────────
-        // ─── TUI TERMINAL MODE ───
+    val song = currentSong ?: retainedSong ?: return // Keep the player visible while transitioning
+
+    // ─── TUI TERMINAL MODE ───
     val isTui = com.theveloper.pixelplay.ui.theme.LocalIsTuiTheme.current
     if (isTui) {
         val position by rememberUpdatedState(currentPositionProvider())
@@ -303,7 +272,8 @@ fun FullPlayerContent(
         return
     }
     // ─────────────────────────
-    val song = currentSong ?: retainedSong ?: return // Keep the player visible while transitioning
+
+    var showSongInfoBottomSheet by remember { mutableStateOf(false) }
     var showSongInfoBottomSheet by remember { mutableStateOf(false) }
     var showLyricsSheet by remember { mutableStateOf(false) }
     var showArtistPicker by rememberSaveable { mutableStateOf(false) }
