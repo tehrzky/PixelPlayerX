@@ -16,8 +16,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import coil.ImageLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
 
 private val ASCII_CHARS = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
 
@@ -29,7 +31,8 @@ suspend fun uriToAscii(context: Context, uri: Any?, width: Int = 34, height: Int
             .size(width, height)
             .allowHardware(false)
             .build()
-        when (val result = context.imageLoader.execute(request)) {
+                val loader = coil.ImageLoader.Builder(context).build()
+        when (val result = loader.execute(request)) {
             is SuccessResult -> {
                 val bitmap = (result.drawable as? BitmapDrawable)?.bitmap ?: return@withContext null
                 bitmapToAscii(bitmap, width, height)
