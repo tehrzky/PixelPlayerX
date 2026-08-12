@@ -958,9 +958,18 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun saveAndActivatePalette(name: String, primaryColorArgb: Long, oledBlack: Boolean) {
+    fun saveAndActivatePalette(
+        name: String,
+        accentColorArgb: Long,
+        backgroundColorArgb: Long,
+        surfaceColorArgb: Long,
+        buttonColorArgb: Long,
+        textColorArgb: Long
+    ) {
         viewModelScope.launch {
-            themePreferencesRepository.saveAndActivatePalette(name, primaryColorArgb, oledBlack)
+            themePreferencesRepository.saveAndActivatePalette(
+                name, accentColorArgb, backgroundColorArgb, surfaceColorArgb, buttonColorArgb, textColorArgb
+            )
         }
     }
 
