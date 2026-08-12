@@ -272,8 +272,7 @@ fun FullPlayerContent(
         return
     }
     // ─────────────────────────
-
-    var showSongInfoBottomSheet by remember { mutableStateOf(false) }
+    
     var showSongInfoBottomSheet by remember { mutableStateOf(false) }
     var showLyricsSheet by remember { mutableStateOf(false) }
     var showArtistPicker by rememberSaveable { mutableStateOf(false) }
