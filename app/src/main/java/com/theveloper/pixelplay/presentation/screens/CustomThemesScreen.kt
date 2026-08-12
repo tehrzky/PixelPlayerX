@@ -12,13 +12,11 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,7 +32,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -53,6 +51,7 @@ import androidx.navigation.NavController
 import com.theveloper.pixelplay.data.preferences.CustomThemeMode
 import com.theveloper.pixelplay.data.preferences.SavedThemePalette
 import com.theveloper.pixelplay.presentation.components.CollapsibleCommonTopBar
+import com.theveloper.pixelplay.presentation.components.ColorPickerDialog
 import com.theveloper.pixelplay.presentation.components.MiniPlayerHeight
 import com.theveloper.pixelplay.presentation.viewmodel.SettingsViewModel
 
@@ -84,13 +83,13 @@ private val presets = listOf(
     )
 )
 
-// Curated accent swatches — not a full color wheel. Simple, fast, and covers
-// the common cases; a real color picker can come later if it's actually needed.
-private val accentSwatches = listOf(
-    0xFFBB86FC, 0xFF00FF41, 0xFF03DAC6, 0xFFFF3B30, 0xFFFF9500,
-    0xFFFFD60A, 0xFF34C759, 0xFF00C7BE, 0xFF32ADE6, 0xFF5E5CE6,
-    0xFFAF52DE, 0xFFFF2D55, 0xFFFFFFFF, 0xFF8E8E93
-)
+private enum class ColorRole(val label: String) {
+    ACCENT("Primary Accent"),
+    BACKGROUND("Background"),
+    SURFACE("Card / Box Surface"),
+    BUTTON("Button Fill"),
+    TEXT("Text")
+}
 
 @Composable
 fun CustomThemesScreen(
@@ -101,13 +100,23 @@ fun CustomThemesScreen(
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val topBarHeight = 56.dp + statusBarHeight
 
-    var selectedSwatch by remember { mutableStateOf(accentSwatches.first()) }
-    var oledBlackDraft by remember { mutableStateOf(false) }
+    var accent by remember { mutableStateOf(Color(0xFFBB86FC)) }
+    var background by remember { mutableStateOf(Color(0xFF1B1B1B)) }
+    var surface by remember { mutableStateOf(Color(0xFF2A2A2A)) }
+    var button by remember { mutableStateOf(Color(0xFFBB86FC)) }
+    var text by remember { mutableStateOf(Color(0xFFEEEEEE)) }
+
+    var editingRole by remember { mutableStateOf<ColorRole?>(null) }
     var showSaveDialog by remember { mutableStateOf(false) }
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
+            // Advanced section now lives as an item INSIDE this same LazyColumn
+            // with no extra per-item padding, so it inherits exactly the same
+            // 16dp start/end inset as every ThemePresetCard above it — that
+            // mismatch (an extra +12dp start padding I'd added before) was the
+            // actual cause of the misalignment.
             contentPadding = PaddingValues(
                 top = topBarHeight + 16.dp,
                 bottom = MiniPlayerHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp,
@@ -133,19 +142,31 @@ fun CustomThemesScreen(
                         if (preset.mode != CustomThemeMode.DEFAULT) settingsViewModel.selectPalette(null)
                     }
                 )
+            }
 
-                // Advanced section only makes sense under Default — TUI is
-                // deliberately fixed/monochrome, not accent-customizable.
-                if (preset.mode == CustomThemeMode.DEFAULT && uiState.customThemeMode == CustomThemeMode.DEFAULT) {
+            // Rendered as its own top-level LazyColumn item — same as the cards
+            // above it, not nested with any additional modifier padding.
+            if (uiState.customThemeMode == CustomThemeMode.DEFAULT) {
+                item(key = "advanced") {
                     AdvancedDefaultThemeSection(
-                        selectedSwatch = selectedSwatch,
-                        onSwatchSelected = { selectedSwatch = it },
-                        oledBlack = oledBlackDraft,
-                        onOledBlackChange = { oledBlackDraft = it },
+                        accent = accent, onAccentClick = { editingRole = ColorRole.ACCENT },
+                        background = background, onBackgroundClick = { editingRole = ColorRole.BACKGROUND },
+                        surface = surface, onSurfaceClick = { editingRole = ColorRole.SURFACE },
+                        button = button, onButtonClick = { editingRole = ColorRole.BUTTON },
+                        text = text, onTextClick = { editingRole = ColorRole.TEXT },
                         onSaveClick = { showSaveDialog = true },
                         savedPalettes = uiState.savedPalettes,
                         activePaletteId = uiState.activePaletteId,
-                        onSelectPalette = { settingsViewModel.selectPalette(it) },
+                        onSelectPalette = { id ->
+                            settingsViewModel.selectPalette(id)
+                            uiState.savedPalettes.find { it.id == id }?.let { p ->
+                                accent = Color(p.accentColorArgb.toInt())
+                                background = Color(p.backgroundColorArgb.toInt())
+                                surface = Color(p.surfaceColorArgb.toInt())
+                                button = Color(p.buttonColorArgb.toInt())
+                                text = Color(p.textColorArgb.toInt())
+                            }
+                        },
                         onClearPalette = { settingsViewModel.selectPalette(null) },
                         onDeletePalette = { pendingDeleteId = it }
                     )
@@ -159,6 +180,31 @@ fun CustomThemesScreen(
             headerHeight = topBarHeight,
             onBackClick = { navController.popBackStack() },
             collapsedTitleStartPadding = 72.dp
+        )
+    }
+
+    editingRole?.let { role ->
+        val current = when (role) {
+            ColorRole.ACCENT -> accent
+            ColorRole.BACKGROUND -> background
+            ColorRole.SURFACE -> surface
+            ColorRole.BUTTON -> button
+            ColorRole.TEXT -> text
+        }
+        ColorPickerDialog(
+            initialColor = current,
+            title = role.label,
+            onDismiss = { editingRole = null },
+            onConfirm = { picked ->
+                when (role) {
+                    ColorRole.ACCENT -> accent = picked
+                    ColorRole.BACKGROUND -> background = picked
+                    ColorRole.SURFACE -> surface = picked
+                    ColorRole.BUTTON -> button = picked
+                    ColorRole.TEXT -> text = picked
+                }
+                editingRole = null
+            }
         )
     }
 
@@ -179,7 +225,14 @@ fun CustomThemesScreen(
                 Button(
                     enabled = nameInput.isNotBlank(),
                     onClick = {
-                        settingsViewModel.saveAndActivatePalette(nameInput.trim(), selectedSwatch, oledBlackDraft)
+                        settingsViewModel.saveAndActivatePalette(
+                            nameInput.trim(),
+                            accent.toArgb().toLong(),
+                            background.toArgb().toLong(),
+                            surface.toArgb().toLong(),
+                            button.toArgb().toLong(),
+                            text.toArgb().toLong()
+                        )
                         showSaveDialog = false
                     }
                 ) { Text("Save") }
@@ -206,10 +259,11 @@ fun CustomThemesScreen(
 
 @Composable
 private fun AdvancedDefaultThemeSection(
-    selectedSwatch: Long,
-    onSwatchSelected: (Long) -> Unit,
-    oledBlack: Boolean,
-    onOledBlackChange: (Boolean) -> Unit,
+    accent: Color, onAccentClick: () -> Unit,
+    background: Color, onBackgroundClick: () -> Unit,
+    surface: Color, onSurfaceClick: () -> Unit,
+    button: Color, onButtonClick: () -> Unit,
+    text: Color, onTextClick: () -> Unit,
     onSaveClick: () -> Unit,
     savedPalettes: List<SavedThemePalette>,
     activePaletteId: String?,
@@ -218,47 +272,28 @@ private fun AdvancedDefaultThemeSection(
     onDeletePalette: (String) -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 4.dp),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Advanced", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
             Text(
-                "Pick an accent color and optionally force pure black — then save it as your own named palette.",
+                "Tap any swatch to open the color picker for that part of the app.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
             )
 
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(accentSwatches) { swatch ->
-                    val selected = swatch == selectedSwatch
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(Color(swatch.toInt()), CircleShape)
-                            .then(
-                                if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
-                                else Modifier
-                            )
-                            .clickable { onSwatchSelected(swatch) }
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Pure black (OLED)", style = MaterialTheme.typography.bodyMedium)
-                Switch(checked = oledBlack, onCheckedChange = onOledBlackChange)
-            }
+            ColorRoleRow("Primary Accent", accent, onAccentClick)
+            ColorRoleRow("Background", background, onBackgroundClick)
+            ColorRoleRow("Card / Box Surface", surface, onSurfaceClick)
+            ColorRoleRow("Button Fill", button, onButtonClick)
+            ColorRoleRow("Text", text, onTextClick)
 
             OutlinedButton(
                 onClick = onSaveClick,
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
             ) { Text("Save as new palette") }
 
             if (savedPalettes.isNotEmpty()) {
@@ -282,7 +317,7 @@ private fun AdvancedDefaultThemeSection(
                         Box(
                             modifier = Modifier
                                 .size(24.dp)
-                                .background(Color(palette.primaryColorArgb.toInt()), CircleShape)
+                                .background(Color(palette.accentColorArgb.toInt()), CircleShape)
                         )
                         Text(palette.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                         if (activePaletteId == palette.id) {
@@ -295,6 +330,26 @@ private fun AdvancedDefaultThemeSection(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ColorRoleRow(label: String, color: Color, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .background(color, CircleShape)
+                .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+        )
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
     }
 }
 
