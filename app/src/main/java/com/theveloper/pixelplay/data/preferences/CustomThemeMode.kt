@@ -7,5 +7,12 @@ package com.theveloper.pixelplay.data.preferences
  * this same list — v1 ships built-in presets only. */
 object CustomThemeMode {
     const val DEFAULT = "default"
-    const val TUI_OLED = "tui_oled"
+    const val TUI_OLED = "tui_oled"   // legacy alias, maps to green
+    const val TUI_GREEN = "tui_green"
+    const val TUI_AMBER = "tui_amber"
+    const val TUI_WHITE = "tui_white"
+    const val TUI_BLUE = "tui_blue"
+    const val TUI_CYAN = "tui_cyan"
+
+    fun isTui(mode: String): Boolean = mode != DEFAULT
 }
