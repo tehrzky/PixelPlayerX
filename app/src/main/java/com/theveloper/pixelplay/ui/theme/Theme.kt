@@ -26,6 +26,14 @@ import androidx.core.view.WindowCompat
 import com.theveloper.pixelplay.presentation.viewmodel.ColorSchemePair
 import com.theveloper.pixelplay.data.preferences.SavedThemePalette
 import androidx.core.graphics.ColorUtils
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import com.theveloper.pixelplay.data.preferences.CustomThemeMode
 
 val LocalPixelPlayDarkTheme = staticCompositionLocalOf { false }
 val LocalShowScrollbar = staticCompositionLocalOf { true }
@@ -34,6 +42,7 @@ val LocalShowScrollbar = staticCompositionLocalOf { true }
 // own DataStore read — this is the single source of truth for "are we
 // currently in TUI mode" anywhere in the composition tree.
 val LocalIsTuiTheme = staticCompositionLocalOf { false }
+val LocalCustomThemeMode = staticCompositionLocalOf { CustomThemeMode.DEFAULT }
 
 // Pure black OLED scheme — true #000000 background/surface (not a dark gray),
 // high-contrast white/green text, minimal accent color. No dynamic color, no
@@ -58,6 +67,49 @@ val TuiColorScheme = darkColorScheme(
     error = Color(0xFFFF3B30),
     onError = Color(0xFF000000)
 )
+fun tuiColorSchemeFor(mode: String): androidx.compose.material3.ColorScheme = when (mode) {
+    CustomThemeMode.TUI_AMBER -> darkColorScheme(
+        primary = Color(0xFFFFB000), onPrimary = Color(0xFF000000),
+        secondary = Color(0xFFFFB000), onSecondary = Color(0xFF000000),
+        tertiary = Color(0xFFFF3B30), onTertiary = Color(0xFF000000),
+        background = Color(0xFF000000), onBackground = Color(0xFFFFB000),
+        surface = Color(0xFF000000), onSurface = Color(0xFFFFB000),
+        surfaceVariant = Color(0xFF0A0A0A), onSurfaceVariant = Color(0xFFCC8800),
+        outline = Color(0xFF3A3A3A), outlineVariant = Color(0xFF2A2A2A),
+        surfaceTint = Color(0xFF000000), error = Color(0xFFFF3B30), onError = Color(0xFF000000)
+    )
+    CustomThemeMode.TUI_WHITE -> darkColorScheme(
+        primary = Color(0xFFFFFFFF), onPrimary = Color(0xFF000000),
+        secondary = Color(0xFFFFFFFF), onSecondary = Color(0xFF000000),
+        tertiary = Color(0xFFFF3B30), onTertiary = Color(0xFF000000),
+        background = Color(0xFF000000), onBackground = Color(0xFFFFFFFF),
+        surface = Color(0xFF000000), onSurface = Color(0xFFFFFFFF),
+        surfaceVariant = Color(0xFF0A0A0A), onSurfaceVariant = Color(0xFFCCCCCC),
+        outline = Color(0xFF3A3A3A), outlineVariant = Color(0xFF2A2A2A),
+        surfaceTint = Color(0xFF000000), error = Color(0xFFFF3B30), onError = Color(0xFF000000)
+    )
+    CustomThemeMode.TUI_BLUE -> darkColorScheme(
+        primary = Color(0xFF00A8FF), onPrimary = Color(0xFF000000),
+        secondary = Color(0xFF00A8FF), onSecondary = Color(0xFF000000),
+        tertiary = Color(0xFFFF3B30), onTertiary = Color(0xFF000000),
+        background = Color(0xFF000000), onBackground = Color(0xFF00A8FF),
+        surface = Color(0xFF000000), onSurface = Color(0xFF00A8FF),
+        surfaceVariant = Color(0xFF0A0A0A), onSurfaceVariant = Color(0xFF0088CC),
+        outline = Color(0xFF3A3A3A), outlineVariant = Color(0xFF2A2A2A),
+        surfaceTint = Color(0xFF000000), error = Color(0xFFFF3B30), onError = Color(0xFF000000)
+    )
+    CustomThemeMode.TUI_CYAN -> darkColorScheme(
+        primary = Color(0xFF00FFFF), onPrimary = Color(0xFF000000),
+        secondary = Color(0xFF00FFFF), onSecondary = Color(0xFF000000),
+        tertiary = Color(0xFFFF3B30), onTertiary = Color(0xFF000000),
+        background = Color(0xFF000000), onBackground = Color(0xFF00FFFF),
+        surface = Color(0xFF000000), onSurface = Color(0xFF00FFFF),
+        surfaceVariant = Color(0xFF0A0A0A), onSurfaceVariant = Color(0xFF00CCCC),
+        outline = Color(0xFF3A3A3A), outlineVariant = Color(0xFF2A2A2A),
+        surfaceTint = Color(0xFF000000), error = Color(0xFFFF3B30), onError = Color(0xFF000000)
+    )
+    else -> TuiColorScheme
+}
 
 // Sharp, zero-radius corners everywhere — no rounded cards, no rounded
 // buttons. This is what gives TUI mode its bracket/terminal-window look even
@@ -167,18 +219,50 @@ val LightColorScheme = lightColorScheme(
     error = Color(0xFFD32F2F),
     onError = PixelPlayWhite
 )
-
+@Composable
+private fun TuiCrtOverlay(content: @Composable () -> Unit) {
+    val glowColor = when (LocalCustomThemeMode.current) {
+        CustomThemeMode.TUI_AMBER -> Color(0xFFFFB000)
+        CustomThemeMode.TUI_WHITE -> Color(0xFFFFFFFF)
+        CustomThemeMode.TUI_BLUE -> Color(0xFF00A8FF)
+        CustomThemeMode.TUI_CYAN -> Color(0xFF00FFFF)
+        else -> Color(0xFF00FF41)
+    }
+    Box(modifier = Modifier.fillMaxSize()) {
+        content()
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val lineHeight = 4.dp.toPx()
+            val lineCount = (size.height / lineHeight).toInt()
+            for (i in 0 until lineCount step 2) {
+                drawRect(
+                    color = Color.Black.copy(alpha = 0.12f),
+                    topLeft = Offset(0f, i * lineHeight),
+                    size = Size(size.width, lineHeight)
+                )
+            }
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color.Transparent, glowColor.copy(alpha = 0.06f)),
+                    center = Offset(size.width / 2, size.height / 2),
+                    radius = size.width * 0.8f
+                ),
+                size = size
+            )
+        }
+    }
+}
 @Composable
 fun PixelPlayTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     colorSchemePairOverride: ColorSchemePair? = null,
-    isTuiTheme: Boolean = false,
+    customThemeMode: String = CustomThemeMode.DEFAULT,
     activePalette: SavedThemePalette? = null,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
+    val isTuiTheme = CustomThemeMode.isTui(customThemeMode)
     val baseColorScheme = when {
-        isTuiTheme -> TuiColorScheme
+        isTuiTheme -> tuiColorSchemeFor(customThemeMode)
         colorSchemePairOverride == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             // Tema dinámico del sistema como prioridad si no hay override
             try {
@@ -241,15 +325,27 @@ fun PixelPlayTheme(
         navigationColor = finalColorScheme.background
     )
 
-    CompositionLocalProvider(
+        CompositionLocalProvider(
         LocalPixelPlayDarkTheme provides darkTheme,
-        LocalIsTuiTheme provides isTuiTheme
+        LocalIsTuiTheme provides isTuiTheme,
+        LocalCustomThemeMode provides customThemeMode
     ) {
-        MaterialTheme(
-            colorScheme = finalColorScheme,
-            typography = if (isTuiTheme) TuiTypography else Typography,
-            shapes = if (isTuiTheme) TuiShapes else Shapes,
-            content = content
-        )
+        if (isTuiTheme) {
+            TuiCrtOverlay {
+                MaterialTheme(
+                    colorScheme = finalColorScheme,
+                    typography = TuiTypography,
+                    shapes = TuiShapes,
+                    content = content
+                )
+            }
+        } else {
+            MaterialTheme(
+                colorScheme = finalColorScheme,
+                typography = Typography,
+                shapes = Shapes,
+                content = content
+            )
+        }
     }
 }
