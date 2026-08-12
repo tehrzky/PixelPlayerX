@@ -16,6 +16,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -199,13 +200,37 @@ fun PixelPlayTheme(
     // (TUI is deliberately fixed/monochrome) and never over the album-art
     // dynamic scheme (that's a different, existing customization axis).
     val finalColorScheme = if (activePalette != null && !isTuiTheme && colorSchemePairOverride == null) {
-        val accent = Color(activePalette.primaryColorArgb.toInt())
+        val accent = Color(activePalette.accentColorArgb.toInt())
+        val background = Color(activePalette.backgroundColorArgb.toInt())
+        val surface = Color(activePalette.surfaceColorArgb.toInt())
+        val button = Color(activePalette.buttonColorArgb.toInt())
+        val text = Color(activePalette.textColorArgb.toInt())
+        // "onX" colors need to stay readable against the color they sit on top
+        // of — rather than trusting the user picked a readable pair, derive
+        // on-colors by luminance so text/icons never disappear against a
+        // custom background.
+        fun onColorFor(bg: Color): Color =
+            if (bg.luminance() > 0.5f) Color(0xFF000000) else Color(0xFFFFFFFF)
+
         baseColorScheme.copy(
             primary = accent,
             secondary = accent,
+            onPrimary = onColorFor(accent),
+            onSecondary = onColorFor(accent),
             surfaceTint = accent,
-            background = if (activePalette.oledBlack) Color(0xFF000000) else baseColorScheme.background,
-            surface = if (activePalette.oledBlack) Color(0xFF000000) else baseColorScheme.surface
+            background = background,
+            onBackground = text,
+            surface = surface,
+            onSurface = text,
+            surfaceVariant = surface,
+            onSurfaceVariant = text.copy(alpha = 0.75f),
+            surfaceContainer = surface,
+            surfaceContainerLow = surface,
+            surfaceContainerHigh = surface,
+            surfaceContainerHighest = surface,
+            surfaceContainerLowest = surface,
+            tertiary = button,
+            onTertiary = onColorFor(button)
         )
     } else {
         baseColorScheme
