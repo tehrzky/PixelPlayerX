@@ -77,13 +77,23 @@ class ThemePreferencesRepository @Inject constructor(
             preferences[Keys.CUSTOM_THEME_MODE] = mode
         }
 
-    /** Saves a new named palette and makes it active in one atomic write. */
-    suspend fun saveAndActivatePalette(name: String, primaryColorArgb: Long, oledBlack: Boolean): SavedThemePalette {
+    /** Saves a new named 5-color palette and makes it active in one atomic write. */
+    suspend fun saveAndActivatePalette(
+        name: String,
+        accentColorArgb: Long,
+        backgroundColorArgb: Long,
+        surfaceColorArgb: Long,
+        buttonColorArgb: Long,
+        textColorArgb: Long
+    ): SavedThemePalette {
         val palette = SavedThemePalette(
             id = UUID.randomUUID().toString(),
             name = name,
-            primaryColorArgb = primaryColorArgb,
-            oledBlack = oledBlack
+            accentColorArgb = accentColorArgb,
+            backgroundColorArgb = backgroundColorArgb,
+            surfaceColorArgb = surfaceColorArgb,
+            buttonColorArgb = buttonColorArgb,
+            textColorArgb = textColorArgb
         )
         dataStore.edit { preferences ->
             val current = parsePalettes(preferences[Keys.SAVED_PALETTES])
