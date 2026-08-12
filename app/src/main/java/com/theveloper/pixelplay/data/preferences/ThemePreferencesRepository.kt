@@ -13,6 +13,7 @@ import kotlinx.serialization.json.Json
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.serialization.encodeToString
 
 @Singleton
 class ThemePreferencesRepository @Inject constructor(
@@ -140,5 +141,42 @@ class ThemePreferencesRepository @Inject constructor(
     ) = dataStore.edit { preferences ->
         preferences[Keys.ALBUM_ART_PALETTE_STYLE] = style.storageKey
         preferences[Keys.ALBUM_ART_COLOR_ACCURACY] = AlbumArtColorAccuracy.clamp(accuracyLevel)
+    }
+        /** Import a theme from JSON string. Returns the imported SavedThemePalette
+     *  or null if it was a TUI preset (which activates by mode, not palette). */
+    suspend fun importTheme(jsonString: String): Pair<String, SavedThemePalette?>? {
+        return try {
+            val schema = json.decodeFromString<UserThemeImportSchema>(jsonString)
+            if (CustomThemeMode.isTui(schema.mode)) {
+                setCustomThemeMode(schema.mode)
+                setActivePaletteId(null)
+                schema.mode to null
+            } else {
+                val palette = schema.toSavedThemePalette() ?: return null
+                dataStore.edit { preferences ->
+                    val current = parsePalettes(preferences[Keys.SAVED_PALETTES])
+                    preferences[Keys.SAVED_PALETTES] = json.encodeToString(current + palette)
+                    preferences[Keys.ACTIVE_PALETTE_ID] = palette.id
+                    preferences[Keys.CUSTOM_THEME_MODE] = CustomThemeMode.DEFAULT
+                }
+                CustomThemeMode.DEFAULT to palette
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Export a single saved palette as JSON. */
+    fun exportPalette(palette: SavedThemePalette): String {
+        val schema = UserThemeImportSchema(
+            name = palette.name,
+            mode = CustomThemeMode.DEFAULT,
+            accentColorArgb = palette.accentColorArgb,
+            backgroundColorArgb = palette.backgroundColorArgb,
+            surfaceColorArgb = palette.surfaceColorArgb,
+            buttonColorArgb = palette.buttonColorArgb,
+            textColorArgb = palette.textColorArgb
+        )
+        return json.encodeToString(schema)
     }
 }
