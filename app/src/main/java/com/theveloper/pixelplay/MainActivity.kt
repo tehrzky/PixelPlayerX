@@ -295,7 +295,7 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(LocalShowScrollbar provides showScrollbar) {
                 PixelPlayTheme(
                     darkTheme = useDarkTheme,
-                    isTuiTheme = customThemeMode == com.theveloper.pixelplay.data.preferences.CustomThemeMode.TUI_OLED,
+                    customThemeMode = customThemeMode,
                     activePalette = activePalette
                 ) {
                     var contentVisible by remember { mutableStateOf(false) }
