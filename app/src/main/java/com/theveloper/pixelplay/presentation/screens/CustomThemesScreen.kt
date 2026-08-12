@@ -54,6 +54,7 @@ import com.theveloper.pixelplay.presentation.components.CollapsibleCommonTopBar
 import com.theveloper.pixelplay.presentation.components.ColorPickerDialog
 import com.theveloper.pixelplay.presentation.components.MiniPlayerHeight
 import com.theveloper.pixelplay.presentation.viewmodel.SettingsViewModel
+import androidx.compose.material3.OutlinedButton
 
 private data class ThemePreset(
     val mode: String,
@@ -74,11 +75,43 @@ private val presets = listOf(
         previewFont = FontFamily.Default
     ),
     ThemePreset(
-        mode = CustomThemeMode.TUI_OLED,
-        title = "TUI / ASCII (OLED Black)",
-        description = "Pure black background for OLED screens, monospace font, sharp corners, terminal-green accent.",
+        mode = CustomThemeMode.TUI_GREEN,
+        title = "Terminal Green",
+        description = "Classic phosphor green on pure black. Sharp corners, monospace, CRT scanlines.",
         previewBackground = Color(0xFF000000),
         previewAccent = Color(0xFF00FF41),
+        previewFont = FontFamily.Monospace
+    ),
+    ThemePreset(
+        mode = CustomThemeMode.TUI_AMBER,
+        title = "Terminal Amber",
+        description = "Warm amber phosphor reminiscent of vintage monochrome monitors.",
+        previewBackground = Color(0xFF000000),
+        previewAccent = Color(0xFFFFB000),
+        previewFont = FontFamily.Monospace
+    ),
+    ThemePreset(
+        mode = CustomThemeMode.TUI_WHITE,
+        title = "Terminal White",
+        description = "Clean white phosphor on black. High contrast, minimalist.",
+        previewBackground = Color(0xFF000000),
+        previewAccent = Color(0xFFFFFFFF),
+        previewFont = FontFamily.Monospace
+    ),
+    ThemePreset(
+        mode = CustomThemeMode.TUI_BLUE,
+        title = "Terminal Blue",
+        description = "Cool blue phosphor. Sci-fi terminal aesthetic.",
+        previewBackground = Color(0xFF000000),
+        previewAccent = Color(0xFF00A8FF),
+        previewFont = FontFamily.Monospace
+    ),
+    ThemePreset(
+        mode = CustomThemeMode.TUI_CYAN,
+        title = "Terminal Cyan",
+        description = "Bright cyan phosphor. Retro-futuristic terminal look.",
+        previewBackground = Color(0xFF000000),
+        previewAccent = Color(0xFF00FFFF),
         previewFont = FontFamily.Monospace
     )
 )
@@ -109,6 +142,8 @@ fun CustomThemesScreen(
     var editingRole by remember { mutableStateOf<ColorRole?>(null) }
     var showSaveDialog by remember { mutableStateOf(false) }
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
+    var showImportDialog by remember { mutableStateOf(false) }
+    var importError by remember { mutableStateOf<String?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -125,13 +160,19 @@ fun CustomThemesScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            item(key = "intro") {
-                Text(
-                    "Choose a built-in theme preset. More customization options are planned.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
+                        item(key = "intro") {
+                Column {
+                    Text(
+                        "Choose a built-in theme preset or import a custom theme JSON.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    OutlinedButton(
+                        onClick = { showImportDialog = true },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    ) { Text("Import theme from JSON") }
+                }
             }
             items(presets, key = { it.mode }) { preset ->
                 ThemePresetCard(
@@ -253,6 +294,43 @@ fun CustomThemesScreen(
                 }) { Text("Delete") }
             },
             dismissButton = { TextButton(onClick = { pendingDeleteId = null }) { Text("Cancel") } }
+        )
+    }
+        if (showImportDialog) {
+        var jsonInput by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false; importError = null },
+            title = { Text("Import theme") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = jsonInput,
+                        onValueChange = { jsonInput = it; importError = null },
+                        label = { Text("Paste theme JSON") },
+                        minLines = 4,
+                        maxLines = 8
+                    )
+                    importError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        settingsViewModel.importTheme(jsonInput.trim()) { success, name ->
+                            if (success) {
+                                showImportDialog = false
+                                jsonInput = ""
+                                importError = null
+                            } else {
+                                importError = "Invalid theme JSON or unsupported schema."
+                            }
+                        }
+                    }
+                ) { Text("Import") }
+            },
+            dismissButton = { TextButton(onClick = { showImportDialog = false; importError = null }) { Text("Cancel") } }
         )
     }
 }
