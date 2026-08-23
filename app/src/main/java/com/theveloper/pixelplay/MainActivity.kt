@@ -184,6 +184,8 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var themePreferencesRepository: ThemePreferencesRepository
     @Inject
+    lateinit var uploadedThemeRepository: com.theveloper.pixelplay.data.theme.UploadedThemeRepository
+    @Inject
     lateinit var syncManager: SyncManager
     // For handling shortcut navigation - using StateFlow so composables can observe changes
     private val _pendingPlaylistNavigation = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
@@ -292,13 +294,27 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            // Resolution order: built-in TUI, then look up uploaded themes by
+            // id, then fall back to Default. This is the one place that needs
+            // to know uploaded themes exist at all — everything downstream
+            // just receives a ThemeDefinition and doesn't care where it came
+            // from. Recomputed via remember(customThemeMode) since the
+            // uploaded themes list itself only changes on import/delete (rare),
+            // not worth a live collector for.
+            val resolvedThemeDefinition = remember(customThemeMode) {
+                when (customThemeMode) {
+                    com.theveloper.pixelplay.data.preferences.CustomThemeMode.TUI_OLED -> com.theveloper.pixelplay.ui.theme.BuiltInThemes.TUI
+                    com.theveloper.pixelplay.data.preferences.CustomThemeMode.DEFAULT -> com.theveloper.pixelplay.ui.theme.BuiltInThemes.DEFAULT
+                    else -> uploadedThemeRepository.listInstalledThemes()
+                        .find { it.id == customThemeMode }
+                        ?.toThemeDefinition()
+                        ?: com.theveloper.pixelplay.ui.theme.BuiltInThemes.DEFAULT
+                }
+            }
             CompositionLocalProvider(LocalShowScrollbar provides showScrollbar) {
                 PixelPlayTheme(
                     darkTheme = useDarkTheme,
-                        themeDefinition = if (customThemeMode == com.theveloper.pixelplay.data.preferences.CustomThemeMode.TUI_OLED)
-                        com.theveloper.pixelplay.ui.theme.BuiltInThemes.TUI
-                    else
-                        com.theveloper.pixelplay.ui.theme.BuiltInThemes.DEFAULT,
+                    themeDefinition = resolvedThemeDefinition,
                     activePalette = activePalette
                 ) {
                     var contentVisible by remember { mutableStateOf(false) }
