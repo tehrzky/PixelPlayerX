@@ -29,48 +29,13 @@ import androidx.core.graphics.ColorUtils
 
 val LocalPixelPlayDarkTheme = staticCompositionLocalOf { false }
 val LocalShowScrollbar = staticCompositionLocalOf { true }
-// Exposed so individual screens can react to TUI mode later (bracket-style
-// icons, dashed borders, ASCII art, etc.) without every screen needing its
-// own DataStore read — this is the single source of truth for "are we
-// currently in TUI mode" anywhere in the composition tree.
-val LocalIsTuiTheme = staticCompositionLocalOf { false }
+// Replaces the old LocalIsTuiTheme boolean. TUI is no longer a special case —
+// it's just BuiltInThemes.TUI, one instance of ThemeDefinition — so any
+// screen that wants to react to the active theme (icon style, border style,
+// corner radius, font) reads this instead of asking "is this TUI or not".
+val LocalThemeDefinition = staticCompositionLocalOf { BuiltInThemes.DEFAULT }
 
-// Pure black OLED scheme — true #000000 background/surface (not a dark gray),
-// high-contrast white/green text, minimal accent color. No dynamic color, no
-// album-art-derived color: TUI mode is deliberately uniform regardless of
-// what's playing, matching the monochrome terminal aesthetic.
-val TuiColorScheme = darkColorScheme(
-    primary = Color(0xFF00FF41),
-    onPrimary = Color(0xFF000000),
-    secondary = Color(0xFF00FF41),
-    onSecondary = Color(0xFF000000),
-    tertiary = Color(0xFFFF3B30),
-    onTertiary = Color(0xFF000000),
-    background = Color(0xFF000000),
-    onBackground = Color(0xFFE0E0E0),
-    surface = Color(0xFF000000),
-    onSurface = Color(0xFFE0E0E0),
-    surfaceVariant = Color(0xFF0A0A0A),
-    onSurfaceVariant = Color(0xFFB0B0B0),
-    outline = Color(0xFF3A3A3A),
-    outlineVariant = Color(0xFF2A2A2A),
-    surfaceTint = Color(0xFF000000),
-    error = Color(0xFFFF3B30),
-    onError = Color(0xFF000000)
-)
-
-// Sharp, zero-radius corners everywhere — no rounded cards, no rounded
-// buttons. This is what gives TUI mode its bracket/terminal-window look even
-// before any screen gets bespoke ASCII-style components.
-val TuiShapes = Shapes(
-    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
-    small = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
-    medium = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
-    large = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
-    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
-)
-
-private val TuiTypography = Typography.copy(
+private fun monospaceTypography() = Typography.copy(
     displayLarge = Typography.displayLarge.copy(fontFamily = FontFamily.Monospace),
     displayMedium = Typography.displayMedium.copy(fontFamily = FontFamily.Monospace),
     displaySmall = Typography.displaySmall.copy(fontFamily = FontFamily.Monospace),
@@ -86,6 +51,17 @@ private val TuiTypography = Typography.copy(
     labelLarge = Typography.labelLarge.copy(fontFamily = FontFamily.Monospace),
     labelMedium = Typography.labelMedium.copy(fontFamily = FontFamily.Monospace),
     labelSmall = Typography.labelSmall.copy(fontFamily = FontFamily.Monospace)
+)
+
+/** Builds a Material3 Shapes object from a theme's single cornerRadius value
+ * — themes describe "how rounded", not five separate radii, since no theme
+ * so far has needed per-size-tier control. */
+private fun ThemeShape.toMaterialShapes() = Shapes(
+    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(cornerRadius),
+    small = androidx.compose.foundation.shape.RoundedCornerShape(cornerRadius),
+    medium = androidx.compose.foundation.shape.RoundedCornerShape(cornerRadius),
+    large = androidx.compose.foundation.shape.RoundedCornerShape(cornerRadius),
+    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(cornerRadius)
 )
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
@@ -172,13 +148,31 @@ val LightColorScheme = lightColorScheme(
 fun PixelPlayTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     colorSchemePairOverride: ColorSchemePair? = null,
-    isTuiTheme: Boolean = false,
+    themeDefinition: ThemeDefinition = BuiltInThemes.DEFAULT,
     activePalette: SavedThemePalette? = null,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
     val baseColorScheme = when {
-        isTuiTheme -> TuiColorScheme
+        themeDefinition.useFixedColors -> darkColorScheme(
+            primary = themeDefinition.colors.accent,
+            onPrimary = if (themeDefinition.colors.accent.luminance() > 0.5f) Color(0xFF000000) else Color(0xFFFFFFFF),
+            secondary = themeDefinition.colors.accent,
+            onSecondary = if (themeDefinition.colors.accent.luminance() > 0.5f) Color(0xFF000000) else Color(0xFFFFFFFF),
+            tertiary = themeDefinition.colors.button,
+            onTertiary = if (themeDefinition.colors.button.luminance() > 0.5f) Color(0xFF000000) else Color(0xFFFFFFFF),
+            background = themeDefinition.colors.background,
+            onBackground = themeDefinition.colors.text,
+            surface = themeDefinition.colors.surface,
+            onSurface = themeDefinition.colors.text,
+            surfaceVariant = themeDefinition.colors.surface,
+            onSurfaceVariant = themeDefinition.colors.text.copy(alpha = 0.75f),
+            outline = themeDefinition.colors.text.copy(alpha = 0.3f),
+            outlineVariant = themeDefinition.colors.text.copy(alpha = 0.2f),
+            surfaceTint = themeDefinition.colors.accent,
+            error = Color(0xFFFF3B30),
+            onError = Color(0xFF000000)
+        )
         colorSchemePairOverride == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             // Tema dinámico del sistema como prioridad si no hay override
             try {
@@ -196,10 +190,10 @@ fun PixelPlayTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
-    // A saved palette only applies on top of the Default theme, never over TUI
-    // (TUI is deliberately fixed/monochrome) and never over the album-art
-    // dynamic scheme (that's a different, existing customization axis).
-    val finalColorScheme = if (activePalette != null && !isTuiTheme && colorSchemePairOverride == null) {
+    // A saved palette only applies on top of a theme that isn't using fixed
+    // colors (TUI is deliberately fixed/monochrome) and never over the
+    // album-art dynamic scheme (that's a different, existing customization axis).
+    val finalColorScheme = if (activePalette != null && !themeDefinition.useFixedColors && colorSchemePairOverride == null) {
         val accent = Color(activePalette.accentColorArgb.toInt())
         val background = Color(activePalette.backgroundColorArgb.toInt())
         val surface = Color(activePalette.surfaceColorArgb.toInt())
@@ -243,12 +237,12 @@ fun PixelPlayTheme(
 
     CompositionLocalProvider(
         LocalPixelPlayDarkTheme provides darkTheme,
-        LocalIsTuiTheme provides isTuiTheme
+        LocalThemeDefinition provides themeDefinition
     ) {
         MaterialTheme(
             colorScheme = finalColorScheme,
-            typography = if (isTuiTheme) TuiTypography else Typography,
-            shapes = if (isTuiTheme) TuiShapes else Shapes,
+            typography = if (themeDefinition.fontStyle == ThemeFontStyle.MONOSPACE) monospaceTypography() else Typography,
+            shapes = themeDefinition.shape.toMaterialShapes(),
             content = content
         )
     }
