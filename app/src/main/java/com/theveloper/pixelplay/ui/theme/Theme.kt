@@ -161,6 +161,16 @@ fun PixelPlayTheme(
             onSecondary = if (themeDefinition.colors.accent.luminance() > 0.5f) Color(0xFF000000) else Color(0xFFFFFFFF),
             tertiary = themeDefinition.colors.button,
             onTertiary = if (themeDefinition.colors.button.luminance() > 0.5f) Color(0xFF000000) else Color(0xFFFFFFFF),
+            // These 3 pairs were missing entirely before — the Mini Player and
+            // full Player screen's background is driven by primaryContainer,
+            // not primary, so without this the whole player area silently
+            // never responded to TUI or a saved palette at all.
+            primaryContainer = themeDefinition.colors.surface,
+            onPrimaryContainer = themeDefinition.colors.text,
+            secondaryContainer = themeDefinition.colors.surface,
+            onSecondaryContainer = themeDefinition.colors.text,
+            tertiaryContainer = themeDefinition.colors.surface,
+            onTertiaryContainer = themeDefinition.colors.text,
             background = themeDefinition.colors.background,
             onBackground = themeDefinition.colors.text,
             surface = themeDefinition.colors.surface,
@@ -224,7 +234,15 @@ fun PixelPlayTheme(
             surfaceContainerHighest = surface,
             surfaceContainerLowest = surface,
             tertiary = button,
-            onTertiary = onColorFor(button)
+            onTertiary = onColorFor(button),
+            // Same missing-role fix as the TUI branch above — the saved
+            // custom palette on Default was hitting the same silent gap.
+            primaryContainer = surface,
+            onPrimaryContainer = text,
+            secondaryContainer = surface,
+            onSecondaryContainer = text,
+            tertiaryContainer = surface,
+            onTertiaryContainer = text
         )
     } else {
         baseColorScheme
