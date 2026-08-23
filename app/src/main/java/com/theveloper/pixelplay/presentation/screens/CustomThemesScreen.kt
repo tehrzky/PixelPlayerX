@@ -1,5 +1,7 @@
 package com.theveloper.pixelplay.presentation.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -43,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -99,6 +103,13 @@ fun CustomThemesScreen(
     val uiState by settingsViewModel.uiState.collectAsStateWithLifecycle()
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val topBarHeight = 56.dp + statusBarHeight
+    val context = LocalContext.current
+
+    val themeFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val rawJson = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }?.toString(Charsets.UTF_8)
+        if (rawJson != null) settingsViewModel.importTheme(rawJson)
+    }
 
     var accent by remember { mutableStateOf(Color(0xFFBB86FC)) }
     var background by remember { mutableStateOf(Color(0xFF1B1B1B)) }
@@ -112,11 +123,6 @@ fun CustomThemesScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
-            // Advanced section now lives as an item INSIDE this same LazyColumn
-            // with no extra per-item padding, so it inherits exactly the same
-            // 16dp start/end inset as every ThemePresetCard above it — that
-            // mismatch (an extra +12dp start padding I'd added before) was the
-            // actual cause of the misalignment.
             contentPadding = PaddingValues(
                 top = topBarHeight + 16.dp,
                 bottom = MiniPlayerHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp,
@@ -127,7 +133,7 @@ fun CustomThemesScreen(
         ) {
             item(key = "intro") {
                 Text(
-                    "Choose a built-in theme preset. More customization options are planned.",
+                    "Choose a built-in theme preset, or upload your own theme file.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 4.dp)
@@ -142,6 +148,35 @@ fun CustomThemesScreen(
                         if (preset.mode != CustomThemeMode.DEFAULT) settingsViewModel.selectPalette(null)
                     }
                 )
+            }
+
+            item(key = "uploaded_header") {
+                Text(
+                    "Uploaded themes",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                )
+            }
+            items(uiState.uploadedThemes, key = { "uploaded_" + it.id }) { uploaded ->
+                UploadedThemeCard(
+                    theme = uploaded,
+                    selected = uiState.customThemeMode == uploaded.id,
+                    onClick = {
+                        settingsViewModel.setCustomThemeMode(uploaded.id)
+                        settingsViewModel.selectPalette(null)
+                    },
+                    onDelete = { settingsViewModel.deleteUploadedTheme(uploaded.id) }
+                )
+            }
+            item(key = "import_theme_button") {
+                OutlinedButton(
+                    onClick = { themeFilePicker.launch(arrayOf("application/json", "text/*", "*/*")) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Rounded.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text("  Import theme (.json)")
+                }
             }
 
             // Rendered as its own top-level LazyColumn item — same as the cards
@@ -241,6 +276,15 @@ fun CustomThemesScreen(
         )
     }
 
+    uiState.themeImportError?.let { error ->
+        AlertDialog(
+            onDismissRequest = settingsViewModel::dismissThemeImportError,
+            confirmButton = { Button(onClick = settingsViewModel::dismissThemeImportError) { Text("OK") } },
+            title = { Text("Import failed") },
+            text = { Text(error) }
+        )
+    }
+
     pendingDeleteId?.let { id ->
         AlertDialog(
             onDismissRequest = { pendingDeleteId = null },
@@ -254,6 +298,49 @@ fun CustomThemesScreen(
             },
             dismissButton = { TextButton(onClick = { pendingDeleteId = null }) { Text("Cancel") } }
         )
+    }
+}
+
+@Composable
+private fun UploadedThemeCard(
+    theme: com.theveloper.pixelplay.data.theme.UploadedThemeSchema,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .then(
+                if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                else Modifier
+            ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(Color(theme.backgroundColorArgb.toInt()), RoundedCornerShape(8.dp))
+                    .border(1.dp, Color(theme.accentColorArgb.toInt()).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(theme.name, style = MaterialTheme.typography.titleMedium)
+                Text("Uploaded theme", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (selected) {
+                Icon(Icons.Rounded.CheckCircle, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
+            }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Rounded.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+            }
+        }
     }
 }
 
