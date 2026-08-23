@@ -59,6 +59,8 @@ data class SettingsUiState(
     val customThemeMode: String = com.theveloper.pixelplay.data.preferences.CustomThemeMode.DEFAULT,
     val savedPalettes: List<com.theveloper.pixelplay.data.preferences.SavedThemePalette> = emptyList(),
     val activePaletteId: String? = null,
+    val uploadedThemes: List<com.theveloper.pixelplay.data.theme.UploadedThemeSchema> = emptyList(),
+    val themeImportError: String? = null,
     val playerThemePreference: String = ThemePreference.ALBUM_ART,
     val albumArtPaletteStyle: AlbumArtPaletteStyle = AlbumArtPaletteStyle.default,
     val albumArtColorAccuracy: Int = AlbumArtColorAccuracy.DEFAULT,
@@ -188,6 +190,7 @@ class SettingsViewModel @Inject constructor(
     private val userPreferencesRepository: UserPreferencesRepository,
     private val aiPreferencesRepository: AiPreferencesRepository,
     private val themePreferencesRepository: ThemePreferencesRepository,
+    private val uploadedThemeRepository: com.theveloper.pixelplay.data.theme.UploadedThemeRepository,
     private val colorSchemeProcessor: ColorSchemeProcessor,
     private val syncManager: SyncManager,
     private val aiClientFactory: AiClientFactory,
@@ -585,6 +588,8 @@ class SettingsViewModel @Inject constructor(
             }
         }
 
+        refreshUploadedThemes()
+
         viewModelScope.launch {
             backupManager.getBackupHistory().collect { history ->
                 _uiState.update { it.copy(backupHistory = history) }
@@ -956,6 +961,35 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             themePreferencesRepository.setCustomThemeMode(mode)
         }
+    }
+
+    private fun refreshUploadedThemes() {
+        _uiState.update { it.copy(uploadedThemes = uploadedThemeRepository.listInstalledThemes()) }
+    }
+
+    fun importTheme(rawJson: String) {
+        try {
+            uploadedThemeRepository.importTheme(rawJson)
+            _uiState.update { it.copy(themeImportError = null) }
+            refreshUploadedThemes()
+        } catch (e: IllegalArgumentException) {
+            _uiState.update { it.copy(themeImportError = e.message) }
+        }
+    }
+
+    fun deleteUploadedTheme(id: String) {
+        uploadedThemeRepository.deleteTheme(id)
+        // If the theme being deleted was active, fall back to Default rather
+        // than leaving the app pointed at a mode string that no longer
+        // resolves to anything.
+        if (uiState.value.customThemeMode == id) {
+            setCustomThemeMode(com.theveloper.pixelplay.data.preferences.CustomThemeMode.DEFAULT)
+        }
+        refreshUploadedThemes()
+    }
+
+    fun dismissThemeImportError() {
+        _uiState.update { it.copy(themeImportError = null) }
     }
 
     fun saveAndActivatePalette(
