@@ -163,8 +163,8 @@ fun AnimatedPlaybackControls(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.SkipPrevious,
+                com.theveloper.pixelplay.presentation.components.ThemedIcon(
+                    type = com.theveloper.pixelplay.presentation.components.ThemedIconType.PREVIOUS,
                     contentDescription = "Anterior",
                     tint = tintPreviousIcon,
                     modifier = Modifier.size(iconSize)
@@ -236,8 +236,8 @@ fun AnimatedPlaybackControls(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.SkipNext,
+                com.theveloper.pixelplay.presentation.components.ThemedIcon(
+                    type = com.theveloper.pixelplay.presentation.components.ThemedIconType.NEXT,
                     contentDescription = "Siguiente",
                     tint = tintNextIcon,
                     modifier = Modifier.size(iconSize)
@@ -259,8 +259,8 @@ private fun MorphingPlayPauseIcon(
         animationSpec = motionScheme.fastEffectsSpec(),
         label = "playPauseCrossfade"
     ) { playing ->
-        Icon(
-            imageVector = if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+        com.theveloper.pixelplay.presentation.components.ThemedIcon(
+            type = if (playing) com.theveloper.pixelplay.presentation.components.ThemedIconType.PAUSE else com.theveloper.pixelplay.presentation.components.ThemedIconType.PLAY,
             contentDescription = if (playing) "Pausar" else "Reproducir",
             tint = tint,
             modifier = Modifier.size(size)
