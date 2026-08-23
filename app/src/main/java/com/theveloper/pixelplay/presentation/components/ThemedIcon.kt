@@ -25,11 +25,6 @@ import androidx.compose.ui.unit.dp
 import com.theveloper.pixelplay.ui.theme.LocalThemeDefinition
 import com.theveloper.pixelplay.ui.theme.ThemeIconStyle
 
-/** Semantic icon slots — the finite, curated set actually needed for the
- * transport controls in the flagship screenshot (play/pause, next/prev,
- * shuffle, repeat, favorite), not an attempt to cover every icon in the app.
- * Extending this enum is how a future icon gets theme-awareness; it doesn't
- * scale to "every icon anywhere" and isn't meant to. */
 enum class ThemedIconType(val materialIcon: ImageVector, val bracketLabel: String) {
     PLAY(Icons.Rounded.PlayArrow, "[>]"),
     PAUSE(Icons.Rounded.Pause, "[||]"),
@@ -44,16 +39,12 @@ enum class ThemedIconType(val materialIcon: ImageVector, val bracketLabel: Strin
     FAVORITE_OFF(Icons.Rounded.FavoriteBorder, "[ 3]")
 }
 
-/** Renders a Material icon or its bracket-text equivalent depending on the
- * active theme's iconStyle — this, not a color swap, is what actually makes
- * transport controls look like the TUI screenshot instead of just recolored
- * Material icons. Callers don't branch on theme themselves; this is the one
- * place that decision gets made. */
 @Composable
 fun ThemedIcon(
     type: ThemedIconType,
     contentDescription: String?,
     modifier: Modifier = Modifier,
+    tint: androidx.compose.ui.graphics.Color = LocalContentColor.current,
     onClick: (() -> Unit)? = null
 ) {
     val theme = LocalThemeDefinition.current
@@ -63,6 +54,7 @@ fun ThemedIcon(
         ThemeIconStyle.MATERIAL -> Icon(
             imageVector = type.materialIcon,
             contentDescription = contentDescription,
+            tint = tint,
             modifier = clickableModifier
         )
         ThemeIconStyle.BRACKET_TEXT -> Box(
@@ -71,7 +63,7 @@ fun ThemedIcon(
         ) {
             Text(
                 text = type.bracketLabel,
-                color = LocalContentColor.current,
+                color = tint,
                 style = MaterialTheme.typography.labelLarge
             )
         }
