@@ -164,8 +164,8 @@ internal fun MiniPlayerContentInternal(
                 },
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Rounded.SkipPrevious,
+            ThemedIcon(
+                type = ThemedIconType.PREVIOUS,
                 contentDescription = "Anterior",
                 tint = LocalMaterialTheme.current.primary,
                 modifier = Modifier.size(22.dp)
@@ -189,8 +189,8 @@ internal fun MiniPlayerContentInternal(
                 },
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+            ThemedIcon(
+                type = if (isPlaying) ThemedIconType.PAUSE else ThemedIconType.PLAY,
                 contentDescription = if (isPlaying) "Pausar" else "Reproducir",
                 tint = LocalMaterialTheme.current.onPrimary,
                 modifier = Modifier.size(22.dp)
@@ -211,8 +211,8 @@ internal fun MiniPlayerContentInternal(
                 ) { onNext() },
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Rounded.SkipNext,
+            ThemedIcon(
+                type = ThemedIconType.NEXT,
                 contentDescription = "Siguiente",
                 tint = LocalMaterialTheme.current.primary,
                 modifier = Modifier.size(22.dp)
